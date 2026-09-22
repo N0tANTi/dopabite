@@ -15,8 +15,8 @@
 
 ## P0: production email delivery
 
-- Current: passwordless email OTP, 30-day sessions, anonymous-account linking, and conflict-safe rating/favorite merge are implemented. The UI remains disabled until SMTP is configured.
-- Next action: choose a transactional email provider, add server-only `SMTP_*` credentials, and test inbox delivery plus second-device sign-in.
+- Current: passwordless email OTP, 30-day sessions, anonymous-account linking, conflict-safe rating/favorite merge, and Tencent SES API template delivery are implemented and enabled. The least-privilege CAM credential, configured template ID, and verified sender address are stored server-side.
+- Next action: test real-inbox delivery and second-device sign-in, then rotate the CAM key that was disclosed during setup and replace it directly on the server.
 - Acceptance: a real inbox receives a code, and the user's nickname, ratings, and private favorites appear on a second device after verification.
 
 ## P2: WeChat login

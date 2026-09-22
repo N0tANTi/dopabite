@@ -28,7 +28,7 @@ Last verified: 2026-09-22
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
 - Active web release: `/srv/dopabite/releases/20260922130417`.
 - Active symlink: `/srv/dopabite/current`.
-- Active API release: `/srv/dopabite-api/releases/20260922130417`, linked from `/srv/dopabite-api/current`.
+- Active API release: `/srv/dopabite-api/releases/20260922142926`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
 - The first verified production snapshot was also copied off-host to `D:\anti\backups\dopabite`. Automated COS replication is not configured yet.
@@ -51,14 +51,16 @@ Last verified: 2026-09-22
 - The first production SQLite snapshot passed its checksum and `PRAGMA integrity_check`; the post-deploy system disk remains at 25% byte use and 8% inode use.
 - Back-to-top visibility and return behavior were verified locally; its production presence was verified after scrolling.
 - Chain-discovery release `20260922113221` previously passed HTTPS, API health, asset-identity, and storage checks before the account release superseded it.
-- Account release `20260922130417` is active for both web and API. HTTP redirects to HTTPS, homepage and API health return 200, `/api/config` correctly reports email delivery disabled, the page serves `index-tkIkchOh.js`, cross-origin writes return 403, Nginx validation passes, and post-deploy storage remains at 25% byte use and 8% inode use.
+- Web release `20260922130417` remains active; its matching API release was superseded by the SES adapter release below. HTTP redirects to HTTPS, homepage and API health return 200, `/api/config` correctly reports email delivery disabled, the page serves `index-tkIkchOh.js`, cross-origin writes return 403, and Nginx validation passes.
 - The pre-deploy snapshot `dopabite-20260922T050158Z.sqlite3` passed `PRAGMA integrity_check`; its off-host copy has matching SHA-256 `1bf447b1a41c609b3873b708d4f53f5ad9ea95734156af27f2d4b2268e19dab8`.
+- Tencent SES API template delivery is implemented and deployed in API release `20260922142926`. The least-privilege CAM credential, verified sender `no-reply@notify.archein.site`, and template ID `61514` are stored only in the root-owned production environment file. Email-code login is now advertised as enabled by the production API. The production SSH alias is explicitly `tengxunyun-anti` to prevent confusion with the unrelated `aliyun-anti` host.
+- SES request construction, feature detection, lint, production build, and dependency audit passed locally. Production API health remains 200, `/api/config` returns `{"emailOtpEnabled":true}`, the service log is clean apart from Node's existing SQLite experimental warning, and post-deploy storage is 26% of bytes and 9% of inodes. Real-inbox delivery and second-device recovery still require manual verification.
 
 ## Known limitations and blockers
 
 - The AMap result set can still contain adjacent non-food POIs such as tourism or beauty listings. Tightening the source filtering is the next data-quality fix.
 - The production JavaScript bundle is about 620 kB minified and triggers Vite's chunk-size warning after adding the auth client.
 - Ratings publish immediately with fixed-window write limiting; there is no moderation console, account deletion UI, or content-reporting flow yet.
-- Passwordless email login is implemented but intentionally disabled in production until a transactional-mail SMTP provider and server-only credentials are configured. The UI shows a non-broken pending state meanwhile.
+- Passwordless email login and Tencent SES API delivery are enabled in production. A real-inbox code delivery and second-device account recovery test are still pending; if Tencent rejects or delays delivery, disable the provider values and return the UI to its safe pending state.
 - Daily server-local backups are active and the first snapshot has an off-host copy, but continuous off-host COS replication still needs credentials and a restore drill.
 - Production Passkey enrollment was not completed during automated QA because that would create a persistent credential; it remains an optional path and still needs one manual real-device enrollment test.
