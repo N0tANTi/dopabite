@@ -24,8 +24,7 @@ import {
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { createRoot, type Root } from 'react-dom/client'
 import { useEffect, useRef, useState } from 'react'
-import type { Restaurant } from '../data/restaurants'
-import { DEMO_CENTER } from '../data/restaurants'
+import { DEMO_CENTER, distanceInMeters, type Restaurant } from '../data/restaurants'
 
 type MapMode = 'demo' | 'loading' | 'live' | 'error'
 
@@ -209,11 +208,41 @@ const initialLocation: LocationInfo = {
   source: 'locating',
 }
 
+const AMAP_SEARCH_RADIUS_METERS = 2_000
+const AMAP_SEARCH_POOL_SIZE = 50
+const AMAP_BRAND_POOL_SIZE = 5
+const DISCOVERY_BRAND_KEYWORDS = ['麦当劳', '肯德基', '必胜客'] as const
+
 function getCoordinates(point?: AMapLngLat): [number, number] | null {
   if (!point) return null
   const lng = point.getLng?.() ?? point.lng
   const lat = point.getLat?.() ?? point.lat
   return typeof lng === 'number' && typeof lat === 'number' ? [lng, lat] : null
+}
+
+function fetchNearbyPoiPool(
+  amap: AMapModule,
+  center: [number, number],
+  type: string,
+  pageSize: number,
+  keyword = '',
+) {
+  const service = new amap.PlaceSearch({
+    pageSize,
+    pageIndex: 1,
+    type,
+    extensions: 'all',
+  })
+
+  return new Promise<AMapPoi[] | null>((resolve) => {
+    service.searchNearBy(keyword, center, AMAP_SEARCH_RADIUS_METERS, (status, result) => {
+      if (status !== 'complete' || typeof result === 'string') {
+        resolve(null)
+        return
+      }
+      resolve(result.poiList?.pois ?? [])
+    })
+  })
 }
 
 function normalizeAddress(address?: string | string[]) {
@@ -297,6 +326,7 @@ export function AmapCanvas({
   const searchAddressRef = useRef<((query: string) => void) | null>(null)
   const refreshSearchRef = useRef<(() => void) | null>(null)
   const applySavedLocationRef = useRef<((label: string, point: [number, number]) => void) | null>(null)
+  const nearbySearchTokenRef = useRef(0)
   const resultLimitRef = useRef(resultLimit)
   const activeSearchRef = useRef<{
     amap: AMapModule
@@ -377,6 +407,7 @@ export function AmapCanvas({
       center: [number, number],
       baseLocation: LocationInfo,
     ) => {
+      const searchToken = ++nearbySearchTokenRef.current
       setMessage(
         baseLocation.source === 'device'
           ? '正在加载你附近的餐厅'
@@ -384,48 +415,94 @@ export function AmapCanvas({
             ? '正在加载所选位置附近餐厅'
             : '正在加载默认位置附近餐厅',
       )
-      const service = new amap.PlaceSearch({
-        pageSize: resultLimitRef.current,
-        pageIndex: 1,
-        type: '050000',
-        extensions: 'all',
-      })
+      // Use the dining POI type as the primary filter rather than the keyword
+      // “餐厅”. That keyword biases AMap toward names/categories containing the
+      // word and can hide nearby chains. Small, sequential brand lookups add at
+      // most one nearby result per brand without overwhelming the general list
+      // or bursting AMap's per-second request limit.
+      void (async () => {
+        const allDiningPois = await fetchNearbyPoiPool(
+          amap,
+          center,
+          '050000',
+          AMAP_SEARCH_POOL_SIZE,
+        )
+        if (cancelled || searchToken !== nearbySearchTokenRef.current) return
+        const brandPoiPools: AMapPoi[][] = []
+        for (const keyword of DISCOVERY_BRAND_KEYWORDS) {
+          const pois = await fetchNearbyPoiPool(
+            amap,
+            center,
+            '050000',
+            AMAP_BRAND_POOL_SIZE,
+            keyword,
+          )
+          if (cancelled || searchToken !== nearbySearchTokenRef.current) return
+          brandPoiPools.push(pois ?? [])
+        }
 
-      service.searchNearBy('餐厅', center, 2_000, (status, result) => {
-        if (cancelled) return
+        if (cancelled || searchToken !== nearbySearchTokenRef.current) return
         setIsLocating(false)
-        if (status !== 'complete' || typeof result === 'string') {
+        if (!allDiningPois && brandPoiPools.every((pois) => pois.length === 0)) {
           setMode('error')
           setMessage('附近店铺暂时加载失败，已保留原有店铺数据')
           return
         }
 
-        const liveRestaurants = (result.poiList?.pois ?? [])
-          .map<Restaurant | null>((poi) => {
-            const poiLocation = getCoordinates(poi.location)
-            if (!poi.id || !poi.name || !poiLocation || !isDiningPoi(poi)) return null
-            const rating = getPoiNumber(poi, 'rating')
-            const cost = getPoiNumber(poi, 'cost')
+        const toRestaurant = (poi: AMapPoi): Restaurant | null => {
+          const poiLocation = getCoordinates(poi.location)
+          if (!poi.id || !poi.name || !poiLocation || !isDiningPoi(poi)) return null
+          const rating = getPoiNumber(poi, 'rating')
+          const cost = getPoiNumber(poi, 'cost')
 
-            return {
-              id: poi.id,
-              name: poi.name,
-              location: poiLocation,
-              address: normalizeAddress(poi.address),
-              businessArea:
-                baseLocation.source === 'manual'
-                  ? '手动选点附近'
-                  : baseLocation.source === 'device'
-                    ? '设备位置附近'
-                    : baseLocation.label,
-              category: poi.type?.split(';').at(-1) ?? '餐饮服务',
-              image: getPhotoUrl(poi.photos),
-              amapRating: rating,
-              averageCost: cost,
-              source: 'amap-live',
-            }
-          })
-          .filter((restaurant): restaurant is Restaurant => restaurant !== null)
+          return {
+            id: poi.id,
+            name: poi.name,
+            location: poiLocation,
+            address: normalizeAddress(poi.address),
+            businessArea:
+              baseLocation.source === 'manual'
+                ? '手动选点附近'
+                : baseLocation.source === 'device'
+                  ? '设备位置附近'
+                  : baseLocation.label,
+            category: poi.type?.split(';').at(-1) ?? '餐饮服务',
+            image: getPhotoUrl(poi.photos),
+            amapRating: rating,
+            averageCost: cost,
+            source: 'amap-live',
+          }
+        }
+
+        const sortByDistance = (first: Restaurant, second: Restaurant) =>
+          distanceInMeters(center, first.location) - distanceInMeters(center, second.location)
+        const uniqueById = (items: Restaurant[]) =>
+          Array.from(new Map(items.map((restaurant) => [restaurant.id, restaurant])).values())
+
+        const diningPool = uniqueById(
+          (allDiningPois ?? [])
+            .map(toRestaurant)
+            .filter((restaurant): restaurant is Restaurant => restaurant !== null),
+        ).sort(sortByDistance)
+        const nearestBrandRestaurants = brandPoiPools
+          .map((pois) =>
+            pois
+              .map(toRestaurant)
+              .filter((restaurant): restaurant is Restaurant => restaurant !== null)
+              .sort(sortByDistance)[0],
+          )
+          .filter((restaurant): restaurant is Restaurant => Boolean(restaurant))
+
+        const requestedLimit = resultLimitRef.current
+        const nearestDining = diningPool.slice(0, requestedLimit)
+        const nearestIds = new Set(nearestDining.map((restaurant) => restaurant.id))
+        const brandSupplement = uniqueById(nearestBrandRestaurants).filter(
+          (restaurant) => !nearestIds.has(restaurant.id),
+        ).slice(0, requestedLimit)
+        const liveRestaurants = [
+          ...nearestDining.slice(0, Math.max(0, requestedLimit - brandSupplement.length)),
+          ...brandSupplement,
+        ].sort(sortByDistance)
 
         onRestaurantsLoaded(liveRestaurants, center)
         setMode('live')
@@ -434,6 +511,11 @@ export function AmapCanvas({
             ? `已连接高德，找到 ${liveRestaurants.length} 家附近餐厅`
             : '当前 2 公里内暂未找到餐厅',
         )
+      })().catch(() => {
+        if (cancelled || searchToken !== nearbySearchTokenRef.current) return
+        setIsLocating(false)
+        setMode('error')
+        setMessage('附近店铺暂时加载失败，已保留原有店铺数据')
       })
     }
 
