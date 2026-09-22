@@ -39,11 +39,18 @@ Install `deploy/systemd/dopabite-api.service` and the backup service/timer under
 
 Install the checked-in Nginx template as `/etc/nginx/sites-available/food-archein-site`, validate with `sudo nginx -t`, and reload Nginx. TLS is managed by Certbot; verify renewal status instead of replacing certificate files manually.
 
+## Enabling email-code login
+
+Email login is feature-detected at API startup. Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM` to the root-owned `/etc/dopabite/api.env`; never put these values in Git, shell history, screenshots, or deployment logs. Use credentials limited to transactional sending for the verified sender/domain.
+
+Restart `dopabite-api.service`, confirm it is active, and verify that `https://food.archein.site/api/config` returns `{"emailOtpEnabled":true}`. Complete a real inbox test and then a fresh-browser sign-in test; the same public nickname, ratings, and private saved locations must appear. If delivery is delayed, duplicated, or rejected, remove the `SMTP_*` values, restart the API, and confirm the endpoint returns `false` so the UI falls back to its safe pending state.
+
 ## Verification
 
 - `curl --noproxy '*' -I http://food.archein.site/` returns a redirect to HTTPS.
 - `curl --noproxy '*' -I https://food.archein.site/` returns 200.
 - `curl --noproxy '*' https://food.archein.site/api/health` returns `{"status":"ok"}`.
+- `curl --noproxy '*' https://food.archein.site/api/config` reflects whether SMTP delivery is actually configured.
 - The certificate SAN contains `food.archein.site`.
 - In a fresh public browser, verify the AMap canvas, nearby POIs, photos, address search, saved location control, map/list selection, account dialog, and browser console. Do not create or bind a real Passkey during an automated smoke test.
 - Run `sudo systemctl start dopabite-backup.service`, verify the newest snapshot with `PRAGMA integrity_check`, and confirm the timer is enabled.
