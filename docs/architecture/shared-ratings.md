@@ -74,8 +74,10 @@ Better Auth 原生支持[匿名账号及后续绑定](https://better-auth.com/do
 ## API 边界
 
 - `GET /api/ratings?poiId=...`：公开评分摘要和评价列表
-- `POST /api/ratings`：新增或更新自己的评分
+- `PUT /api/restaurants/:poiId/my-rating`：新增或更新自己的评分
+- `DELETE /api/restaurants/:poiId/my-rating`：删除自己的评分
 - `GET /api/me/state`：当前用户的评分、关联店铺快照和私有收藏地点
+- `PUT /api/me/restaurant-snapshots`：仅为当前用户已评分的 POI 增补高德图片、参考分和价格等快照字段
 - `PUT /api/me/profile`：更新公开昵称
 - `PUT /api/me/locations`：同步私有收藏地点
 - `POST /api/me/import-local`：一次性导入原有浏览器数据

@@ -9,8 +9,8 @@
 
 ## P1: account and moderation controls
 
-- Public nicknames and detailed community-rating cards are implemented.
-- Next action: add deletion for a user's own rating, account deletion, content reporting, moderation queue, and an operator review surface.
+- Public nicknames, detailed community-rating cards, and user edit/delete controls for their own rating are implemented.
+- Next action: add account deletion, content reporting, moderation queue, and an operator review surface.
 - Acceptance: users can remove their content and account, and reported public notes can be reviewed without direct database edits.
 
 ## P0: production email delivery
