@@ -28,7 +28,7 @@ Last verified: 2026-09-22
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
 - Active web release: `/srv/dopabite/releases/20260922130417`.
 - Active symlink: `/srv/dopabite/current`.
-- Active API release: `/srv/dopabite-api/releases/20260922142926`, linked from `/srv/dopabite-api/current`.
+- Active API release: `/srv/dopabite-api/releases/20260922143538`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
 - The first verified production snapshot was also copied off-host to `D:\anti\backups\dopabite`. Automated COS replication is not configured yet.
@@ -53,8 +53,8 @@ Last verified: 2026-09-22
 - Chain-discovery release `20260922113221` previously passed HTTPS, API health, asset-identity, and storage checks before the account release superseded it.
 - Web release `20260922130417` remains active; its matching API release was superseded by the SES adapter release below. HTTP redirects to HTTPS, homepage and API health return 200, `/api/config` correctly reports email delivery disabled, the page serves `index-tkIkchOh.js`, cross-origin writes return 403, and Nginx validation passes.
 - The pre-deploy snapshot `dopabite-20260922T050158Z.sqlite3` passed `PRAGMA integrity_check`; its off-host copy has matching SHA-256 `1bf447b1a41c609b3873b708d4f53f5ad9ea95734156af27f2d4b2268e19dab8`.
-- Tencent SES API template delivery is implemented and deployed in API release `20260922142926`. The least-privilege CAM credential, verified sender `no-reply@notify.archein.site`, and template ID `61514` are stored only in the root-owned production environment file. Email-code login is now advertised as enabled by the production API. The production SSH alias is explicitly `tengxunyun-anti` to prevent confusion with the unrelated `aliyun-anti` host.
-- SES request construction, feature detection, lint, production build, and dependency audit passed locally. Production API health remains 200, `/api/config` returns `{"emailOtpEnabled":true}`, the service log is clean apart from Node's existing SQLite experimental warning, and post-deploy storage is 26% of bytes and 9% of inodes. Real-inbox delivery and second-device recovery still require manual verification.
+- Tencent SES API template delivery is implemented and deployed in API release `20260922143538`. The least-privilege CAM credential, verified sender `no-reply@notify.archein.site`, and template ID `61514` are stored only in the root-owned production environment file. Email-code login is now advertised as enabled by the production API. The production SSH alias is explicitly `tengxunyun-anti` to prevent confusion with the unrelated `aliyun-anti` host.
+- SES request construction, feature detection, lint, production build, and dependency audit passed locally. Production API health remains 200, `/api/config` returns `{"emailOtpEnabled":true}`, and a production send request to an operator-provided QQ inbox returned `{"success":true}` after correcting the optional OTP-generator configuration. The current service log is clean apart from Node's existing SQLite experimental warning, and post-deploy storage is 26% of bytes and 9% of inodes. Inbox receipt and second-device recovery still require manual verification.
 
 ## Known limitations and blockers
 
