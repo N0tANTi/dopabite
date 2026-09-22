@@ -26,6 +26,7 @@ import {
   DEMO_CENTER,
   distanceInMeters,
   getDopaScore,
+  NEARBY_RADIUS_METERS,
   seedRestaurants,
   type RatingEntry,
   type Restaurant,
@@ -46,8 +47,10 @@ import { createNicknameSuggestion } from './lib/nickname'
 
 type SortMode = 'distance' | 'amap' | 'dopa' | 'budget'
 type ViewMode = 'nearby' | 'rated' | 'ranking'
+type RatedScope = 'all' | 'nearby'
 
 const RATING_STORAGE_KEY = 'dopabite-ratings-v1'
+const RATED_RESTAURANT_STORAGE_KEY = 'dopabite-rated-restaurants-v1'
 const LOCATION_STORAGE_KEY = 'dopabite-saved-locations-v1'
 const CLOUD_SYNC_STORAGE_KEY = 'dopabite-cloud-sync-enabled-v1'
 
@@ -70,6 +73,48 @@ function loadRatings(): RatingStore {
   } catch {
     return {}
   }
+}
+
+function isRestaurant(value: unknown): value is Restaurant {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<Restaurant>
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.name === 'string' &&
+    typeof candidate.address === 'string' &&
+    typeof candidate.category === 'string' &&
+    typeof candidate.businessArea === 'string' &&
+    (candidate.source === 'amap-live' || candidate.source === 'amap-mcp') &&
+    Array.isArray(candidate.location) &&
+    candidate.location.length === 2 &&
+    candidate.location.every((coordinate) => typeof coordinate === 'number' && Number.isFinite(coordinate))
+  )
+}
+
+function loadRatedRestaurants(): Restaurant[] {
+  try {
+    const value = window.localStorage.getItem(RATED_RESTAURANT_STORAGE_KEY)
+    const parsed = value ? JSON.parse(value) as unknown : []
+    return Array.isArray(parsed) ? parsed.filter(isRestaurant) : []
+  } catch {
+    return []
+  }
+}
+
+function mergeRatedRestaurants(current: Restaurant[], incoming: Restaurant[]) {
+  const merged = new Map(current.map((restaurant) => [restaurant.id, restaurant]))
+  for (const restaurant of incoming) {
+    const existing = merged.get(restaurant.id)
+    merged.set(restaurant.id, {
+      ...existing,
+      ...restaurant,
+      image: restaurant.image ?? existing?.image,
+      amapRating: restaurant.amapRating ?? existing?.amapRating,
+      averageCost: restaurant.averageCost ?? existing?.averageCost,
+      openTime: restaurant.openTime ?? existing?.openTime,
+    })
+  }
+  return Array.from(merged.values())
 }
 
 function loadCloudSyncPreference() {
@@ -128,6 +173,7 @@ function App() {
   const [restaurants, setRestaurants] = useState<Restaurant[]>(seedRestaurants)
   const [center, setCenter] = useState<[number, number]>(DEMO_CENTER)
   const [localRatings, setLocalRatings] = useState<RatingStore>(loadRatings)
+  const [ratedRestaurants, setRatedRestaurants] = useState<Restaurant[]>(loadRatedRestaurants)
   const [communityRatings, setCommunityRatings] = useState<RatingStore>({})
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -137,6 +183,7 @@ function App() {
   const [category, setCategory] = useState('全部')
   const [sortMode, setSortMode] = useState<SortMode>('distance')
   const [viewMode, setViewMode] = useState<ViewMode>('nearby')
+  const [ratedScope, setRatedScope] = useState<RatedScope>('all')
   const [showLocationMenu, setShowLocationMenu] = useState(false)
   const [toast, setToast] = useState('')
   const [locationInfo, setLocationInfo] = useState<LocationInfo>(initialLocationInfo)
@@ -150,6 +197,7 @@ function App() {
   const [profileName, setProfileName] = useState(createNicknameSuggestion)
   const locationRequestTokenRef = useRef(0)
   const locationSyncTimeoutRef = useRef<number | null>(null)
+  const localRatingsRef = useRef(localRatings)
 
   const ratings = useMemo(() => {
     const merged: RatingStore = {}
@@ -178,6 +226,14 @@ function App() {
   }, [localRatings])
 
   useEffect(() => {
+    window.localStorage.setItem(RATED_RESTAURANT_STORAGE_KEY, JSON.stringify(ratedRestaurants))
+  }, [ratedRestaurants])
+
+  useEffect(() => {
+    localRatingsRef.current = localRatings
+  }, [localRatings])
+
+  useEffect(() => {
     window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(savedLocations))
   }, [savedLocations])
 
@@ -201,9 +257,14 @@ function App() {
     }
   }, [])
 
+  const ratingPoiIds = useMemo(
+    () => Array.from(new Set([...restaurants, ...ratedRestaurants].map((restaurant) => restaurant.id))),
+    [ratedRestaurants, restaurants],
+  )
+
   useEffect(() => {
     let cancelled = false
-    void fetchPublicRatings(restaurants.map((restaurant) => restaurant.id))
+    void fetchPublicRatings(ratingPoiIds)
       .then((nextRatings) => {
         if (!cancelled) setCommunityRatings((current) => ({ ...current, ...nextRatings }))
       })
@@ -211,7 +272,7 @@ function App() {
     return () => {
       cancelled = true
     }
-  }, [restaurants])
+  }, [ratingPoiIds])
 
   useEffect(() => {
     if (!cloudSyncEnabled) return
@@ -220,6 +281,7 @@ function App() {
       .then((state) => {
         if (cancelled) return
         setLocalRatings((current) => mergeOwnRatings(current, state.ratings))
+        setRatedRestaurants((current) => mergeRatedRestaurants(current, state.ratedRestaurants ?? []))
         setSavedLocations((current) => mergeSavedLocations(current, state.savedLocations))
         setProfileName(state.user.name)
         setCloudHydrated(true)
@@ -271,19 +333,27 @@ function App() {
     }
     if (!session.data) throw new Error('无法建立云端身份，请稍后再试')
 
-    const result = await importLocalData(localRatings, savedLocations, restaurants)
+    const restaurantSnapshots = mergeRatedRestaurants(ratedRestaurants, restaurants)
+    const result = await importLocalData(localRatings, savedLocations, restaurantSnapshots)
     setLocalRatings((current) => mergeOwnRatings(current, result.ratings))
+    setRatedRestaurants((current) => mergeRatedRestaurants(current, result.ratedRestaurants ?? []))
     setSavedLocations((current) => mergeSavedLocations(current, result.savedLocations))
     setCloudSyncEnabled(true)
     setCloudHydrated(true)
     await refreshCommunityRatings(restaurants.map((restaurant) => restaurant.id))
-  }, [localRatings, refreshCommunityRatings, restaurants, savedLocations])
+  }, [localRatings, ratedRestaurants, refreshCommunityRatings, restaurants, savedLocations])
 
   const handleRestaurantsLoaded = useCallback(
     (nextRestaurants: Restaurant[], nextCenter: [number, number]) => {
       setRestaurants(nextRestaurants)
       setCenter(nextCenter)
       setCategory('全部')
+      const matchingRestaurants = nextRestaurants.filter(
+        (restaurant) => localRatingsRef.current[restaurant.id]?.length,
+      )
+      if (matchingRestaurants.length) {
+        setRatedRestaurants((current) => mergeRatedRestaurants(current, matchingRestaurants))
+      }
     },
     [],
   )
@@ -305,22 +375,39 @@ function App() {
     [reduceMotion],
   )
 
+  const allRatedRestaurants = useMemo(() => {
+    const restaurantSnapshots = mergeRatedRestaurants(ratedRestaurants, restaurants)
+    return restaurantSnapshots.filter((restaurant) => localRatings[restaurant.id]?.length)
+  }, [localRatings, ratedRestaurants, restaurants])
+
+  const nearbyRatedCount = useMemo(
+    () => allRatedRestaurants.filter(
+      (restaurant) => distanceInMeters(center, restaurant.location) <= NEARBY_RADIUS_METERS,
+    ).length,
+    [allRatedRestaurants, center],
+  )
+
+  const sourceRestaurants = viewMode === 'rated' ? allRatedRestaurants : restaurants
+
   const categories = useMemo(
-    () => ['全部', ...Array.from(new Set(restaurants.map((restaurant) => restaurant.category))).slice(0, 5)],
-    [restaurants],
+    () => ['全部', ...Array.from(new Set(sourceRestaurants.map((restaurant) => restaurant.category))).slice(0, 5)],
+    [sourceRestaurants],
   )
 
   const visibleRestaurants = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
-    const filtered = restaurants.filter((restaurant) => {
+    const filtered = sourceRestaurants.filter((restaurant) => {
       const matchesQuery =
         !normalizedQuery ||
         restaurant.name.toLowerCase().includes(normalizedQuery) ||
         restaurant.address.toLowerCase().includes(normalizedQuery) ||
         restaurant.category.toLowerCase().includes(normalizedQuery)
       const matchesCategory = category === '全部' || restaurant.category === category
-      const matchesView = viewMode !== 'rated' || (localRatings[restaurant.id]?.length ?? 0) > 0
-      return matchesQuery && matchesCategory && matchesView
+      const matchesRatedScope =
+        viewMode !== 'rated'
+        || ratedScope === 'all'
+        || distanceInMeters(center, restaurant.location) <= NEARBY_RADIUS_METERS
+      return matchesQuery && matchesCategory && matchesRatedScope
     })
 
     const activeSort = viewMode === 'ranking' ? 'dopa' : sortMode
@@ -332,7 +419,7 @@ function App() {
       }
       return distanceInMeters(center, a.location) - distanceInMeters(center, b.location)
     })
-  }, [category, center, localRatings, query, ratings, restaurants, sortMode, viewMode])
+  }, [category, center, query, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
 
   const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
     const localRating: RatingEntry = {
@@ -342,6 +429,7 @@ function App() {
       isMine: true,
       source: 'local',
     }
+    setRatedRestaurants((current) => mergeRatedRestaurants(current, [restaurant]))
     setLocalRatings((current) => ({
       ...current,
       [restaurant.id]: [localRating],
@@ -442,7 +530,10 @@ function App() {
           <button
             type="button"
             className={viewMode === 'nearby' ? 'is-active' : ''}
-            onClick={() => setViewMode('nearby')}
+            onClick={() => {
+              setViewMode('nearby')
+              setCategory('全部')
+            }}
             aria-pressed={viewMode === 'nearby'}
           >
             发现附近
@@ -450,7 +541,10 @@ function App() {
           <button
             type="button"
             className={viewMode === 'ranking' ? 'is-active' : ''}
-            onClick={() => setViewMode('ranking')}
+            onClick={() => {
+              setViewMode('ranking')
+              setCategory('全部')
+            }}
             aria-pressed={viewMode === 'ranking'}
           >
             多巴胺榜
@@ -458,7 +552,10 @@ function App() {
           <button
             type="button"
             className={viewMode === 'rated' ? 'is-active' : ''}
-            onClick={() => setViewMode('rated')}
+            onClick={() => {
+              setViewMode('rated')
+              setCategory('全部')
+            }}
             aria-pressed={viewMode === 'rated'}
           >
             我评过的
@@ -568,11 +665,17 @@ function App() {
           <div className="map-intro">
             <div>
               <span className="eyebrow">今天想吃点什么</span>
-              <h1>附近的真实店，<br />吃完由你打分。</h1>
+              <h1>
+                {viewMode === 'rated' ? (
+                  <>吃过的每一家，<br />都留在这里。</>
+                ) : (
+                  <>附近的真实店，<br />吃完由你打分。</>
+                )}
+              </h1>
             </div>
             <div className="map-intro-stat">
-              <strong>{restaurants.length}</strong>
-              <span>家附近店铺</span>
+              <strong>{viewMode === 'rated' ? allRatedRestaurants.length : restaurants.length}</strong>
+              <span>{viewMode === 'rated' ? '家已评分店铺' : '家附近店铺'}</span>
             </div>
           </div>
 
@@ -600,28 +703,57 @@ function App() {
                   {viewMode === 'rated' && '我评过的'}
                 </h2>
               </div>
-              <p>{visibleRestaurants.length} 个结果，店铺数据来自高德</p>
+              <p>
+                {viewMode === 'rated'
+                  ? ratedScope === 'all'
+                    ? `${visibleRestaurants.length} 个结果，包含所有地点`
+                    : `${visibleRestaurants.length} 个结果，当前地点 2 公里内共 ${nearbyRatedCount} 家`
+                  : `${visibleRestaurants.length} 个结果，店铺数据来自高德`}
+              </p>
             </div>
-            <form
-              className="result-limit-control"
-              onSubmit={(event) => {
-                event.preventDefault()
-                commitResultLimit()
-              }}
-            >
-              <span>加载</span>
-              <input
-                type="number"
-                min="5"
-                max="50"
-                step="5"
-                value={resultLimitDraft}
-                onChange={(event) => setResultLimitDraft(event.target.value)}
-                onBlur={commitResultLimit}
-                aria-label="附近店铺加载数量"
-              />
-              <span>家</span>
-            </form>
+            {viewMode === 'rated' ? (
+              <div className="rated-scope-control" role="group" aria-label="评分店铺范围">
+                <button
+                  type="button"
+                  className={ratedScope === 'all' ? 'is-active' : ''}
+                  onClick={() => setRatedScope('all')}
+                  aria-pressed={ratedScope === 'all'}
+                >
+                  <Sparkle size={14} weight="fill" />
+                  全部 {allRatedRestaurants.length}
+                </button>
+                <button
+                  type="button"
+                  className={ratedScope === 'nearby' ? 'is-active' : ''}
+                  onClick={() => setRatedScope('nearby')}
+                  aria-pressed={ratedScope === 'nearby'}
+                >
+                  <MapPin size={14} weight="fill" />
+                  附近 {nearbyRatedCount}
+                </button>
+              </div>
+            ) : (
+              <form
+                className="result-limit-control"
+                onSubmit={(event) => {
+                  event.preventDefault()
+                  commitResultLimit()
+                }}
+              >
+                <span>加载</span>
+                <input
+                  type="number"
+                  min="5"
+                  max="50"
+                  step="5"
+                  value={resultLimitDraft}
+                  onChange={(event) => setResultLimitDraft(event.target.value)}
+                  onBlur={commitResultLimit}
+                  aria-label="附近店铺加载数量"
+                />
+                <span>家</span>
+              </form>
+            )}
           </div>
 
           <label className="search-box">
@@ -683,18 +815,38 @@ function App() {
                 <span aria-hidden="true">
                   <ForkKnife size={34} weight="duotone" />
                 </span>
-                <h3>{viewMode === 'rated' ? '你还没打过分' : '这个条件没找到店'}</h3>
-                <p>{viewMode === 'rated' ? '先去发现附近的店，吃完再回来写真话。' : '换个关键词或清除品类筛选试试。'}</p>
+                <h3>
+                  {viewMode !== 'rated'
+                    ? '这个条件没找到店'
+                    : !allRatedRestaurants.length
+                      ? '你还没打过分'
+                      : ratedScope === 'nearby' && !nearbyRatedCount
+                        ? '附近还没有你评过的店'
+                        : '这个筛选没有结果'}
+                </h3>
+                <p>
+                  {viewMode !== 'rated'
+                    ? '换个关键词或清除品类筛选试试。'
+                    : !allRatedRestaurants.length
+                      ? '先去发现附近的店，吃完再回来写真话。'
+                      : ratedScope === 'nearby' && !nearbyRatedCount
+                        ? '你的历史评分都还在，切回“全部”就能看到。'
+                        : '换个关键词或清除品类筛选试试。'}
+                </p>
                 <button
                   type="button"
                   className="secondary-button"
                   onClick={() => {
                     setQuery('')
                     setCategory('全部')
-                    setViewMode('nearby')
+                    if (viewMode === 'rated' && allRatedRestaurants.length) {
+                      setRatedScope('all')
+                    } else {
+                      setViewMode('nearby')
+                    }
                   }}
                 >
-                  重置筛选
+                  {viewMode === 'rated' && allRatedRestaurants.length ? '显示全部评价' : '重置筛选'}
                 </button>
               </div>
             )}
@@ -754,6 +906,7 @@ function App() {
           setCloudSyncEnabled(false)
           setCloudHydrated(false)
           setLocalRatings({})
+          setRatedRestaurants([])
           setSavedLocations([])
           setToast('已退出账号；云端数据仍然保留')
         }}

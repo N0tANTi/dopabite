@@ -973,6 +973,50 @@ button {
   box-shadow: 0 0 0 3px rgb(255 208 39 / 42%);
 }
 
+.rated-scope-control {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 3px;
+  padding: 4px;
+  border: 1.5px solid var(--line);
+  border-radius: 13px;
+  background: var(--pink-soft);
+  box-shadow: 3px 3px 0 rgb(255 51 119 / 18%);
+}
+
+.rated-scope-control button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 29px;
+  padding: 5px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--muted);
+  font-size: 10px;
+  font-weight: 850;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.rated-scope-control button:hover {
+  color: var(--ink);
+}
+
+.rated-scope-control button.is-active {
+  background: var(--ink);
+  color: #fffafb;
+  transform: translateY(-1px);
+}
+
+.rated-scope-control button:focus-visible {
+  outline: 3px solid rgb(255 208 39 / 62%);
+  outline-offset: 2px;
+}
+
 .search-box {
   position: sticky;
   top: 88px;

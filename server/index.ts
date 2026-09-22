@@ -28,6 +28,12 @@ type RestaurantInput = {
   address: string
   category: string
   location: [number, number]
+  businessArea: string
+  image?: string
+  amapRating?: number
+  averageCost?: number
+  openTime?: string
+  source: 'amap-live' | 'amap-mcp'
 }
 
 type SavedLocationInput = {
@@ -56,6 +62,21 @@ type LocationRow = {
   latitude: number
 }
 
+type RatedRestaurantRow = {
+  id: string
+  name: string
+  address: string
+  category: string
+  longitude: number
+  latitude: number
+  businessArea: string
+  image?: string
+  amapRating?: number
+  averageCost?: number
+  openTime?: string
+  source: 'amap-live' | 'amap-mcp'
+}
+
 const writeWindows = new Map<string, { count: number; resetAt: number }>()
 
 function jsonError(message: string, status: 400 | 401 | 403 | 404 | 409 | 429 | 500 = 400) {
@@ -64,6 +85,22 @@ function jsonError(message: string, status: 400 | 401 | 403 | 404 | 409 | 429 | 
 
 function cleanText(value: unknown, maxLength: number) {
   return typeof value === 'string' ? value.trim().slice(0, maxLength) : ''
+}
+
+function optionalNumber(value: unknown, min: number, max: number) {
+  const parsed = Number(value)
+  return Number.isFinite(parsed) && parsed >= min && parsed <= max ? parsed : undefined
+}
+
+function optionalHttpUrl(value: unknown) {
+  const candidate = cleanText(value, 1_000)
+  if (!candidate) return undefined
+  try {
+    const url = new URL(candidate)
+    return url.protocol === 'https:' || url.protocol === 'http:' ? url.toString() : undefined
+  } catch {
+    return undefined
+  }
 }
 
 function parseRating(value: unknown): RatingInput {
@@ -106,6 +143,12 @@ function parseRestaurant(value: unknown, expectedId: string): RestaurantInput {
     address: cleanText(input.address, 240),
     category: cleanText(input.category, 80),
     location: [location[0], location[1]],
+    businessArea: cleanText(input.businessArea, 120),
+    image: optionalHttpUrl(input.image),
+    amapRating: optionalNumber(input.amapRating, 0, 5),
+    averageCost: optionalNumber(input.averageCost, 0, 100_000),
+    openTime: cleanText(input.openTime, 160) || undefined,
+    source: input.source === 'amap-mcp' ? 'amap-mcp' : 'amap-live',
   }
 }
 
@@ -137,15 +180,27 @@ function parsePublicNickname(value: unknown) {
 
 function upsertRestaurant(restaurant: RestaurantInput) {
   database.prepare(`
-    INSERT INTO restaurants (amap_poi_id, name, address, category, longitude, latitude, last_seen_at)
-    VALUES (?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO restaurants (
+      amap_poi_id, name, address, category, longitude, latitude, last_seen_at,
+      business_area, image_url, amap_rating, average_cost, open_time, source
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     ON CONFLICT(amap_poi_id) DO UPDATE SET
       name = excluded.name,
       address = excluded.address,
       category = excluded.category,
       longitude = excluded.longitude,
       latitude = excluded.latitude,
-      last_seen_at = excluded.last_seen_at
+      last_seen_at = excluded.last_seen_at,
+      business_area = CASE
+        WHEN excluded.business_area <> '' THEN excluded.business_area
+        ELSE restaurants.business_area
+      END,
+      image_url = COALESCE(excluded.image_url, restaurants.image_url),
+      amap_rating = COALESCE(excluded.amap_rating, restaurants.amap_rating),
+      average_cost = COALESCE(excluded.average_cost, restaurants.average_cost),
+      open_time = COALESCE(excluded.open_time, restaurants.open_time),
+      source = excluded.source
   `).run(
     restaurant.id,
     restaurant.name,
@@ -154,6 +209,12 @@ function upsertRestaurant(restaurant: RestaurantInput) {
     restaurant.location[0],
     restaurant.location[1],
     new Date().toISOString(),
+    restaurant.businessArea,
+    restaurant.image ?? null,
+    restaurant.amapRating ?? null,
+    restaurant.averageCost ?? null,
+    restaurant.openTime ?? null,
+    restaurant.source,
   )
 }
 
@@ -233,6 +294,44 @@ function listOwnRatings(poiIds: string[], userId: string) {
       entries.filter((entry) => entry.isMine),
     ]),
   )
+}
+
+function listRatedRestaurants(userId: string) {
+  const rows = database.prepare(`
+    SELECT
+      s.amap_poi_id AS id,
+      s.name,
+      s.address,
+      s.category,
+      s.longitude,
+      s.latitude,
+      s.business_area AS businessArea,
+      s.image_url AS image,
+      s.amap_rating AS amapRating,
+      s.average_cost AS averageCost,
+      s.open_time AS openTime,
+      s.source
+    FROM ratings r
+    JOIN restaurants s ON s.amap_poi_id = r.amap_poi_id
+    WHERE r.user_id = ?
+    ORDER BY r.updated_at DESC
+  `).all(userId) as unknown as RatedRestaurantRow[]
+
+  return rows
+    .filter((row) => Number.isFinite(row.longitude) && Number.isFinite(row.latitude))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      category: row.category,
+      location: [row.longitude, row.latitude] as [number, number],
+      businessArea: row.businessArea,
+      ...(row.image ? { image: row.image } : {}),
+      ...(Number.isFinite(row.amapRating) ? { amapRating: row.amapRating } : {}),
+      ...(Number.isFinite(row.averageCost) ? { averageCost: row.averageCost } : {}),
+      ...(row.openTime ? { openTime: row.openTime } : {}),
+      source: row.source === 'amap-mcp' ? 'amap-mcp' as const : 'amap-live' as const,
+    }))
 }
 
 function listMyLocations(userId: string) {
@@ -373,6 +472,7 @@ app.get('/api/me/state', (c) => {
       passkeyCount,
     },
     ratings: listOwnRatings(poiIds, session.user.id),
+    ratedRestaurants: listRatedRestaurants(session.user.id),
     savedLocations: listMyLocations(session.user.id),
   })
 })
@@ -453,6 +553,7 @@ app.post('/api/me/import-local', async (c) => {
   return c.json({
     importedRatings,
     ratings: listOwnRatings(myPoiIds, userId),
+    ratedRestaurants: listRatedRestaurants(userId),
     savedLocations: listMyLocations(userId),
   })
 })

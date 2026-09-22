@@ -26,6 +26,7 @@ export type Restaurant = {
 }
 
 export const DEMO_CENTER: [number, number] = [121.445219, 31.223512]
+export const NEARBY_RADIUS_METERS = 2_000
 
 // Seeded from the connected AMap MCP on 2026-09-21. The browser switches to
 // live nearby search when VITE_AMAP_KEY and VITE_AMAP_SECURITY_CODE are set.

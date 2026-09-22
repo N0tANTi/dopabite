@@ -60,4 +60,21 @@ export function createProductTables() {
     CREATE INDEX IF NOT EXISTS saved_locations_user_updated_idx
       ON saved_locations(user_id, updated_at DESC);
   `)
+
+  const restaurantColumns = new Set(
+    (database.prepare('PRAGMA table_info(restaurants)').all() as unknown as { name: string }[])
+      .map((column) => column.name),
+  )
+  const restaurantColumnMigrations = [
+    ['business_area', "ALTER TABLE restaurants ADD COLUMN business_area TEXT NOT NULL DEFAULT ''"],
+    ['image_url', 'ALTER TABLE restaurants ADD COLUMN image_url TEXT'],
+    ['amap_rating', 'ALTER TABLE restaurants ADD COLUMN amap_rating REAL'],
+    ['average_cost', 'ALTER TABLE restaurants ADD COLUMN average_cost REAL'],
+    ['open_time', 'ALTER TABLE restaurants ADD COLUMN open_time TEXT'],
+    ['source', "ALTER TABLE restaurants ADD COLUMN source TEXT NOT NULL DEFAULT 'amap-live'"],
+  ] as const
+
+  for (const [column, statement] of restaurantColumnMigrations) {
+    if (!restaurantColumns.has(column)) database.exec(statement)
+  }
 }

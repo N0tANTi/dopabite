@@ -17,6 +17,7 @@ export type AccountState = {
     passkeyCount: number
   }
   ratings: RatingStore
+  ratedRestaurants?: Restaurant[]
   savedLocations: SavedLocation[]
 }
 
@@ -27,6 +28,7 @@ export type PublicConfig = {
 export type ImportResult = {
   importedRatings: number
   ratings: RatingStore
+  ratedRestaurants?: Restaurant[]
   savedLocations: SavedLocation[]
 }
 
@@ -56,9 +58,16 @@ async function requestJson<T>(input: RequestInfo | URL, init?: RequestInit): Pro
 
 export async function fetchPublicRatings(poiIds: string[]) {
   if (!poiIds.length) return {} as RatingStore
-  const query = new URLSearchParams({ poiIds: poiIds.slice(0, 50).join(',') })
-  const response = await requestJson<{ ratings: RatingStore }>(`/api/ratings?${query}`)
-  return response.ratings
+  const uniquePoiIds = Array.from(new Set(poiIds))
+  const batches: string[][] = []
+  for (let index = 0; index < uniquePoiIds.length; index += 50) {
+    batches.push(uniquePoiIds.slice(index, index + 50))
+  }
+  const responses = await Promise.all(batches.map((batch) => {
+    const query = new URLSearchParams({ poiIds: batch.join(',') })
+    return requestJson<{ ratings: RatingStore }>(`/api/ratings?${query}`)
+  }))
+  return Object.assign({}, ...responses.map((response) => response.ratings)) as RatingStore
 }
 
 export async function saveMyRating(restaurant: Restaurant, rating: RatingEntry) {

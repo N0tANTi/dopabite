@@ -24,7 +24,7 @@ import {
 import AMapLoader from '@amap/amap-jsapi-loader'
 import { createRoot, type Root } from 'react-dom/client'
 import { useEffect, useRef, useState } from 'react'
-import { DEMO_CENTER, distanceInMeters, type Restaurant } from '../data/restaurants'
+import { DEMO_CENTER, distanceInMeters, NEARBY_RADIUS_METERS, type Restaurant } from '../data/restaurants'
 
 type MapMode = 'demo' | 'loading' | 'live' | 'error'
 
@@ -208,7 +208,6 @@ const initialLocation: LocationInfo = {
   source: 'locating',
 }
 
-const AMAP_SEARCH_RADIUS_METERS = 2_000
 const AMAP_SEARCH_POOL_SIZE = 50
 const AMAP_BRAND_POOL_SIZE = 5
 const DISCOVERY_BRAND_KEYWORDS = ['麦当劳', '肯德基', '必胜客'] as const
@@ -235,7 +234,7 @@ function fetchNearbyPoiPool(
   })
 
   return new Promise<AMapPoi[] | null>((resolve) => {
-    service.searchNearBy(keyword, center, AMAP_SEARCH_RADIUS_METERS, (status, result) => {
+    service.searchNearBy(keyword, center, NEARBY_RADIUS_METERS, (status, result) => {
       if (status !== 'complete' || typeof result === 'string') {
         resolve(null)
         return
@@ -776,6 +775,13 @@ export function AmapCanvas({
     })
     clusterRef.current = cluster
   }, [location.accuracy, location.source, locationPoint, mode, onSelect, restaurants, selectedId])
+
+  useEffect(() => {
+    if (mode !== 'live' || !selectedId || !mapRef.current) return
+    const selectedRestaurant = restaurants.find((restaurant) => restaurant.id === selectedId)
+    if (!selectedRestaurant) return
+    mapRef.current.setZoomAndCenter(Math.max(mapRef.current.getZoom(), 15), selectedRestaurant.location)
+  }, [mode, restaurants, selectedId])
 
   const isDemo = mode === 'demo' || mode === 'error'
 
