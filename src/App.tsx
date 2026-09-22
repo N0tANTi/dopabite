@@ -40,7 +40,9 @@ import {
   saveMyRating,
   type RatingStore,
   type SavedLocation,
+  updateProfile,
 } from './lib/api'
+import { createNicknameSuggestion } from './lib/nickname'
 
 type SortMode = 'distance' | 'amap' | 'dopa' | 'budget'
 type ViewMode = 'nearby' | 'rated' | 'ranking'
@@ -145,6 +147,7 @@ function App() {
   const [showBackToTop, setShowBackToTop] = useState(false)
   const [cloudSyncEnabled, setCloudSyncEnabled] = useState(loadCloudSyncPreference)
   const [cloudHydrated, setCloudHydrated] = useState(false)
+  const [profileName, setProfileName] = useState(createNicknameSuggestion)
   const locationRequestTokenRef = useRef(0)
   const locationSyncTimeoutRef = useRef<number | null>(null)
 
@@ -218,6 +221,7 @@ function App() {
         if (cancelled) return
         setLocalRatings((current) => mergeOwnRatings(current, state.ratings))
         setSavedLocations((current) => mergeSavedLocations(current, state.savedLocations))
+        setProfileName(state.user.name)
         setCloudHydrated(true)
       })
       .catch((error) => {
@@ -231,6 +235,19 @@ function App() {
       cancelled = true
     }
   }, [cloudSyncEnabled])
+
+  useEffect(() => {
+    if (!session) return
+    let cancelled = false
+    void getAccountState()
+      .then((state) => {
+        if (!cancelled) setProfileName(state.user.name)
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [session])
 
   useEffect(() => {
     if (!cloudSyncEnabled || !cloudHydrated) return
@@ -317,10 +334,11 @@ function App() {
     })
   }, [category, center, localRatings, query, ratings, restaurants, sortMode, viewMode])
 
-  const saveRating = async (restaurant: Restaurant, rating: RatingEntry) => {
+  const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
     const localRating: RatingEntry = {
       ...rating,
       id: `local-${crypto.randomUUID()}`,
+      authorLabel: nickname,
       isMine: true,
       source: 'local',
     }
@@ -345,6 +363,8 @@ function App() {
         const signIn = await authClient.signIn.anonymous()
         if (signIn.error) throw new Error(signIn.error.message)
       }
+      const profile = await updateProfile(nickname)
+      setProfileName(profile.name)
       const savedRating = await saveMyRating(restaurant, localRating)
       setLocalRatings((current) => ({
         ...current,
@@ -700,6 +720,7 @@ function App() {
       </AnimatePresence>
 
       <RestaurantDrawer
+        key={selectedRestaurant?.id ?? 'none'}
         restaurant={selectedRestaurant}
         ratings={selectedRestaurant ? ratings[selectedRestaurant.id] ?? [] : []}
         open={drawerOpen}
@@ -715,6 +736,7 @@ function App() {
         key={ratingOpen ? `${selectedRestaurant?.id ?? 'none'}-open` : 'closed'}
         open={ratingOpen}
         restaurant={selectedRestaurant}
+        nickname={profileName}
         onOpenChange={setRatingOpen}
         onSubmit={saveRating}
       />
@@ -722,10 +744,12 @@ function App() {
       <AccountDialog
         open={accountOpen}
         onOpenChange={setAccountOpen}
+        nickname={profileName}
         localRatingCount={Object.keys(localRatings).length}
         savedLocationCount={savedLocations.length}
         syncEnabled={cloudSyncEnabled}
         onSync={syncLocalData}
+        onProfileChange={setProfileName}
         onSignedOut={() => {
           setCloudSyncEnabled(false)
           setCloudHydrated(false)

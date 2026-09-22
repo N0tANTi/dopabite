@@ -20,6 +20,12 @@ type RestaurantDrawerProps = {
   onRate: (restaurant: Restaurant) => void
 }
 
+function formatRatingDate(value: string) {
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return ''
+  return new Intl.DateTimeFormat('zh-CN', { month: 'numeric', day: 'numeric' }).format(date)
+}
+
 export function RestaurantDrawer({
   restaurant,
   ratings,
@@ -28,6 +34,8 @@ export function RestaurantDrawer({
   onRate,
 }: RestaurantDrawerProps) {
   const [imageFailed, setImageFailed] = useState(false)
+  const [showAllRatings, setShowAllRatings] = useState(false)
+
   if (!restaurant) return null
 
   const dopaScore = getDopaScore(ratings)
@@ -104,13 +112,45 @@ export function RestaurantDrawer({
 
             {ratings.length > 0 && (
               <section className="recent-ratings" aria-label="最近评分">
-                <h3>最近评分</h3>
-                {ratings.slice(0, 3).map((rating) => (
-                  <article key={rating.createdAt}>
-                    <strong>{getDopaScore([rating])?.toFixed(1)}</strong>
-                    <p>{rating.note || '这次只打分，没有留评语。'}</p>
+                <div className="recent-ratings-heading">
+                  <h3>大家的评分</h3>
+                  <span>{ratings.length} 条</span>
+                </div>
+                {(showAllRatings ? ratings : ratings.slice(0, 4)).map((rating) => (
+                  <article key={rating.id ?? rating.createdAt}>
+                    <div className="rating-author-avatar" aria-hidden="true">
+                      {(rating.authorLabel || '食客').slice(0, 1)}
+                    </div>
+                    <div className="rating-entry-body">
+                      <div className="rating-entry-meta">
+                        <span>
+                          <strong>{rating.authorLabel || '附近食客'}</strong>
+                          {rating.isMine && <small>我的</small>}
+                        </span>
+                        <time dateTime={rating.updatedAt ?? rating.createdAt}>
+                          {formatRatingDate(rating.updatedAt ?? rating.createdAt)}
+                        </time>
+                      </div>
+                      <div className="rating-entry-scoreline">
+                        <b>{getDopaScore([rating])?.toFixed(1)}</b>
+                        <span>味道 {rating.taste}</span>
+                        <span>性价比 {rating.value}</span>
+                        <span>再吃 {rating.returnIntent}</span>
+                      </div>
+                      <p>{rating.note || '这次只打了分，没有留评语。'}</p>
+                    </div>
                   </article>
                 ))}
+                {ratings.length > 4 && (
+                  <button
+                    type="button"
+                    className="ratings-expand-button"
+                    onClick={() => setShowAllRatings((current) => !current)}
+                    aria-expanded={showAllRatings}
+                  >
+                    {showAllRatings ? '收起评分' : `查看全部 ${ratings.length} 条`}
+                  </button>
+                )}
               </section>
             )}
 

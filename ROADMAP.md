@@ -9,14 +9,20 @@
 
 ## P1: account and moderation controls
 
-- Add deletion for a user's own rating, account deletion, content reporting, moderation queue, and an operator review surface.
-- Decide whether to add public nicknames; current public labels are only “匿名食客” and “已登录食客”.
+- Public nicknames and detailed community-rating cards are implemented.
+- Next action: add deletion for a user's own rating, account deletion, content reporting, moderation queue, and an operator review surface.
 - Acceptance: users can remove their content and account, and reported public notes can be reviewed without direct database edits.
 
-## P1: WeChat login
+## P0: production email delivery
 
-- Add website QR login after the required WeChat Open Platform application is approved; keep email OTP as a compatibility/recovery option only if needed.
-- Acceptance: an anonymous user's existing ratings and private favorites survive WeChat account linking and appear on a second device.
+- Current: passwordless email OTP, 30-day sessions, anonymous-account linking, and conflict-safe rating/favorite merge are implemented. The UI remains disabled until SMTP is configured.
+- Next action: choose a transactional email provider, add server-only `SMTP_*` credentials, and test inbox delivery plus second-device sign-in.
+- Acceptance: a real inbox receives a code, and the user's nickname, ratings, and private favorites appear on a second device after verification.
+
+## P2: WeChat login
+
+- Deferred because a WeChat Open Platform website application requires additional qualification and review.
+- Re-evaluate after the core account, moderation, and recovery flows are stable; do not make it a launch dependency.
 
 ## P0: tighten restaurant-only results
 

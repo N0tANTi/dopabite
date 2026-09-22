@@ -3,8 +3,9 @@ import { getMigrations } from 'better-auth/db/migration'
 import { Hono } from 'hono'
 import { HTTPException } from 'hono/http-exception'
 import { secureHeaders } from 'hono/secure-headers'
-import { auth, appOrigin } from './auth.js'
+import { auth, appOrigin, emailOtpEnabled } from './auth.js'
 import { createProductTables, database } from './database.js'
+import { getPublicNickname, parseNickname } from './nicknames.js'
 
 type Session = typeof auth.$Infer.Session
 type AppEnv = {
@@ -45,7 +46,7 @@ type RatingRow = {
   note: string
   createdAt: string
   updatedAt: string
-  hasPasskey: number
+  authorName: string
 }
 
 type LocationRow = {
@@ -126,6 +127,14 @@ function parseSavedLocation(value: unknown): SavedLocationInput {
   return { id, label, point: [point[0], point[1]] }
 }
 
+function parsePublicNickname(value: unknown) {
+  try {
+    return parseNickname(value)
+  } catch (error) {
+    throw jsonError(error instanceof Error ? error.message : '昵称无效')
+  }
+}
+
 function upsertRestaurant(restaurant: RestaurantInput) {
   database.prepare(`
     INSERT INTO restaurants (amap_poi_id, name, address, category, longitude, latitude, last_seen_at)
@@ -183,7 +192,7 @@ function toPublicRating(row: RatingRow, currentUserId?: string) {
     note: row.note,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
-    authorLabel: row.hasPasskey ? '已登录食客' : '匿名食客',
+    authorLabel: getPublicNickname(row.authorName, row.userId),
     isMine: row.userId === currentUserId,
     source: 'cloud' as const,
   }
@@ -203,8 +212,9 @@ function listRatings(poiIds: string[], currentUserId?: string) {
       r.note,
       r.created_at AS createdAt,
       r.updated_at AS updatedAt,
-      EXISTS(SELECT 1 FROM passkey p WHERE p.userId = r.user_id) AS hasPasskey
+      u.name AS authorName
     FROM ratings r
+    JOIN "user" u ON u.id = r.user_id
     WHERE r.status = 'published' AND r.amap_poi_id IN (${placeholders})
     ORDER BY r.updated_at DESC
   `).all(...poiIds) as unknown as RatingRow[]
@@ -301,6 +311,8 @@ app.get('/api/health', (c) => {
   return c.json({ status: 'ok' })
 })
 
+app.get('/api/config', (c) => c.json({ emailOtpEnabled }))
+
 app.use('/api/me/*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers })
   if (!session) throw jsonError('请先登录', 401)
@@ -345,6 +357,7 @@ app.delete('/api/restaurants/:poiId/my-rating', (c) => {
 
 app.get('/api/me/state', (c) => {
   const session = c.get('session')
+  const isAnonymous = Boolean((session.user as Session['user'] & { isAnonymous?: boolean }).isAnonymous)
   const ratingRows = database.prepare('SELECT amap_poi_id AS poiId FROM ratings WHERE user_id = ?')
     .all(session.user.id) as unknown as { poiId: string }[]
   const poiIds = ratingRows.map((row) => row.poiId)
@@ -354,13 +367,25 @@ app.get('/api/me/state', (c) => {
   return c.json({
     user: {
       id: session.user.id,
-      name: session.user.name,
-      isAnonymous: Boolean((session.user as Session['user'] & { isAnonymous?: boolean }).isAnonymous),
+      name: getPublicNickname(session.user.name, session.user.id),
+      email: isAnonymous ? undefined : session.user.email,
+      isAnonymous,
       passkeyCount,
     },
     ratings: listOwnRatings(poiIds, session.user.id),
     savedLocations: listMyLocations(session.user.id),
   })
+})
+
+app.put('/api/me/profile', async (c) => {
+  const body = await c.req.json<{ name?: unknown }>().catch(() => null)
+  if (!body) throw jsonError('请求内容不是有效的 JSON')
+  const name = parsePublicNickname(body.name)
+  await auth.api.updateUser({
+    body: { name },
+    headers: c.req.raw.headers,
+  })
+  return c.json({ name })
 })
 
 app.put('/api/me/locations', async (c) => {

@@ -2,12 +2,14 @@ import * as Dialog from '@radix-ui/react-dialog'
 import { Check, Sparkle, X } from '@phosphor-icons/react'
 import { useMemo, useState } from 'react'
 import type { RatingEntry, Restaurant } from '../data/restaurants'
+import { getNicknameError, normalizeNickname } from '../lib/nickname'
 
 type RatingDialogProps = {
   open: boolean
   restaurant: Restaurant | null
+  nickname: string
   onOpenChange: (open: boolean) => void
-  onSubmit: (restaurant: Restaurant, rating: RatingEntry) => void
+  onSubmit: (restaurant: Restaurant, rating: RatingEntry, nickname: string) => void
 }
 
 type DimensionProps = {
@@ -45,11 +47,13 @@ function RatingDimension({ label, hint, value, onChange }: DimensionProps) {
   )
 }
 
-export function RatingDialog({ open, restaurant, onOpenChange, onSubmit }: RatingDialogProps) {
+export function RatingDialog({ open, restaurant, nickname, onOpenChange, onSubmit }: RatingDialogProps) {
   const [taste, setTaste] = useState(4)
   const [value, setValue] = useState(4)
   const [returnIntent, setReturnIntent] = useState(4)
   const [note, setNote] = useState('')
+  const [publicName, setPublicName] = useState(nickname)
+  const [nicknameError, setNicknameError] = useState('')
 
   const score = useMemo(
     () => Math.round((taste * 0.5 + value * 0.25 + returnIntent * 0.25) * 10) / 10,
@@ -81,13 +85,19 @@ export function RatingDialog({ open, restaurant, onOpenChange, onSubmit }: Ratin
           <form
             onSubmit={(event) => {
               event.preventDefault()
+              const error = getNicknameError(publicName)
+              if (error) {
+                setNicknameError(error)
+                return
+              }
+              const normalizedNickname = normalizeNickname(publicName)
               onSubmit(restaurant, {
                 taste,
                 value,
                 returnIntent,
                 note: note.trim(),
                 createdAt: new Date().toISOString(),
-              })
+              }, normalizedNickname)
               onOpenChange(false)
             }}
           >
@@ -104,6 +114,24 @@ export function RatingDialog({ open, restaurant, onOpenChange, onSubmit }: Ratin
               <RatingDimension label="性价比" hint="这一顿花得值不值" value={value} onChange={setValue} />
               <RatingDimension label="还想再吃" hint="你会不会为它专程再来" value={returnIntent} onChange={setReturnIntent} />
             </div>
+
+            <label className="nickname-field">
+              <span>公开昵称</span>
+              <input
+                value={publicName}
+                onChange={(event) => {
+                  setPublicName(event.target.value)
+                  setNicknameError('')
+                }}
+                maxLength={16}
+                autoComplete="nickname"
+                aria-invalid={Boolean(nicknameError)}
+                aria-describedby="rating-nickname-help"
+              />
+              <small id="rating-nickname-help" className={nicknameError ? 'is-error' : ''}>
+                {nicknameError || '会和评分一起公开展示，也能在账号中心修改。'}
+              </small>
+            </label>
 
             <label className="note-field">
               <span>留句真话 <small>选填</small></span>

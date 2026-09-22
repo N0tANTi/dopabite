@@ -12,11 +12,16 @@ export type AccountState = {
   user: {
     id: string
     name: string
+    email?: string
     isAnonymous: boolean
     passkeyCount: number
   }
   ratings: RatingStore
   savedLocations: SavedLocation[]
+}
+
+export type PublicConfig = {
+  emailOtpEnabled: boolean
 }
 
 export type ImportResult = {
@@ -69,6 +74,17 @@ export async function saveMyRating(restaurant: Restaurant, rating: RatingEntry) 
 
 export function getAccountState() {
   return requestJson<AccountState>('/api/me/state')
+}
+
+export function getPublicConfig() {
+  return requestJson<PublicConfig>('/api/config')
+}
+
+export async function updateProfile(name: string) {
+  return requestJson<{ name: string }>('/api/me/profile', {
+    method: 'PUT',
+    body: JSON.stringify({ name }),
+  })
 }
 
 export function importLocalData(

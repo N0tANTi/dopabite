@@ -1,7 +1,10 @@
 import { passkey } from '@better-auth/passkey'
 import { betterAuth } from 'better-auth'
-import { anonymous } from 'better-auth/plugins'
+import { anonymous, emailOTP } from 'better-auth/plugins'
+import { mergeAnonymousAccount } from './account-merge.js'
 import { database } from './database.js'
+import { emailOtpEnabled, getEmailOtpTestCode, sendEmailOtp } from './email.js'
+import { generateNickname } from './nicknames.js'
 
 export const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:5173'
 const isProduction = process.env.NODE_ENV === 'production'
@@ -19,6 +22,10 @@ export const auth = betterAuth({
   secret: configuredSecret ?? 'dopabite-local-development-secret-change-me',
   database,
   trustedOrigins: [appOrigin],
+  session: {
+    expiresIn: 60 * 60 * 24 * 30,
+    updateAge: 60 * 60 * 24,
+  },
   advanced: {
     cookiePrefix: 'dopabite',
     useSecureCookies: appOrigin.startsWith('https://'),
@@ -28,7 +35,23 @@ export const auth = betterAuth({
   },
   plugins: [
     anonymous({
-      generateName: () => '匿名食客',
+      generateName: generateNickname,
+      onLinkAccount: async ({ anonymousUser, newUser }) => {
+        mergeAnonymousAccount(anonymousUser.user.id, newUser.user.id)
+      },
+    }),
+    emailOTP({
+      async sendVerificationOTP(data) {
+        await sendEmailOtp(data)
+      },
+      generateOTP: getEmailOtpTestCode() ? () => getEmailOtpTestCode() : undefined,
+      expiresIn: 5 * 60,
+      allowedAttempts: 3,
+      storeOTP: 'hashed',
+      rateLimit: {
+        window: 60,
+        max: 3,
+      },
     }),
     passkey({
       rpID,
@@ -37,3 +60,5 @@ export const auth = betterAuth({
     }),
   ],
 })
+
+export { emailOtpEnabled }
