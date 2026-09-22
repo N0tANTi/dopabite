@@ -50,9 +50,10 @@ Better Auth 原生支持[匿名账号及后续绑定](https://better-auth.com/do
 - `amap_poi_id`：高德 POI ID，主键
 - `name`、`address`、`category`
 - `longitude`、`latitude`
+- `business_area`、`image_url`、`amap_rating`、`average_cost`、`open_time`、`source`
 - `last_seen_at`
 
-高德仍是店铺事实来源。这里只保存评分关联所需的最小快照，不复制高德完整数据集。
+高德仍是店铺事实来源。这里只保存评分关联和跨地点历史展示所需的快照，不复制高德完整数据集。可选字段在后续再次遇到同一 POI 时只增补、不用空值覆盖已有信息。
 
 ### 用户评分
 
@@ -74,7 +75,7 @@ Better Auth 原生支持[匿名账号及后续绑定](https://better-auth.com/do
 
 - `GET /api/ratings?poiId=...`：公开评分摘要和评价列表
 - `POST /api/ratings`：新增或更新自己的评分
-- `GET /api/me/state`：当前用户的评分和私有收藏地点
+- `GET /api/me/state`：当前用户的评分、关联店铺快照和私有收藏地点
 - `PUT /api/me/profile`：更新公开昵称
 - `PUT /api/me/locations`：同步私有收藏地点
 - `POST /api/me/import-local`：一次性导入原有浏览器数据

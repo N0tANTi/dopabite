@@ -8,6 +8,7 @@ Last verified: 2026-09-22
 - Production: `https://food.archein.site/`.
 - Live AMap Web JS integration supplies POI identity, address, coordinates, photos, price, and AMap reference rating.
 - The discovery page supports geolocation, manual address search, map picking, saved locations, adjustable result count, category markers, marker-to-list selection, list search and sorting, restaurant details, local ratings, and a scroll-triggered back-to-top control.
+- “我评过的”默认加载当前账号在所有地点评过的店，而不是只检查当前附近的高德结果；用户可以切换为仅显示当前选址 2 公里内的评分记录。远距离评分店铺保留地图标点和列表联动，点击列表会将地图移动并放大到对应店铺。
 - Nearby discovery uses an AMap dining-type pool instead of the biased keyword “餐厅”, then reserves at most one nearby result each for McDonald's, KFC, and Pizza Hut. Results are deduplicated and distance-sorted while preserving the requested total count.
 - AMap categories come from the POI `type` field. Marker icon groups are a DopaBite presentation mapping over those source categories and restaurant names.
 - DopaBite ratings are shared through a same-origin Node.js/Hono API. A first rating creates an anonymous Better Auth session without asking for email; the same user updates the existing rating for that POI.
@@ -26,9 +27,9 @@ Last verified: 2026-09-22
 ## Production deployment
 
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
-- Active web release: `/srv/dopabite/releases/20260922130417`.
+- Active web release: `/srv/dopabite/releases/20260922155323`.
 - Active symlink: `/srv/dopabite/current`.
-- Active API release: `/srv/dopabite-api/releases/20260922143538`, linked from `/srv/dopabite-api/current`.
+- Active API release: `/srv/dopabite-api/releases/20260922155323`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
 - The first verified production snapshot was also copied off-host to `D:\anti\backups\dopabite`. Automated COS replication is not configured yet.
@@ -55,6 +56,8 @@ Last verified: 2026-09-22
 - The pre-deploy snapshot `dopabite-20260922T050158Z.sqlite3` passed `PRAGMA integrity_check`; its off-host copy has matching SHA-256 `1bf447b1a41c609b3873b708d4f53f5ad9ea95734156af27f2d4b2268e19dab8`.
 - Tencent SES API template delivery is implemented and deployed in API release `20260922143538`. The least-privilege CAM credential, verified sender `no-reply@notify.archein.site`, and template ID `61514` are stored only in the root-owned production environment file. Email-code login is now advertised as enabled by the production API. The production SSH alias is explicitly `tengxunyun-anti` to prevent confusion with the unrelated `aliyun-anti` host.
 - SES request construction, feature detection, lint, production build, and dependency audit passed locally. Production API health remains 200, `/api/config` returns `{"emailOtpEnabled":true}`, and a production send request to an operator-provided QQ inbox returned `{"success":true}` after correcting the optional OTP-generator configuration. The current service log is clean apart from Node's existing SQLite experimental warning, and post-deploy storage is 26% of bytes and 9% of inodes. Inbox receipt and second-device recovery still require manual verification.
+- Cross-location rating history passed a local API integration test with a far-away POI: the account state returned its restaurant snapshot, AMap rating, price, and owned rating. Lint, production build, dependency audit, and diff checks passed; the existing bundle-size warning remains.
+- Web/API release `20260922155323` is live. HTTPS, API health, served asset identity (`index-C_ezll21.js` and `index-BeMCkW43.css`), email-login feature detection, Nginx configuration, certificate SAN, live database integrity, and the additive restaurant metadata columns all passed. All 8 existing live ratings have matching restaurant snapshots. The pre-migration snapshot `dopabite-20260922T075212Z.sqlite3` was verified by the backup service and copied off-host with matching SHA-256 `d7909f5df7cbaef0245b852aa0abdbe446e28859b5e42b9df7aadfd77e84ad6`. Post-deploy storage is 26% of bytes and 10% of inodes.
 
 ## Known limitations and blockers
 
