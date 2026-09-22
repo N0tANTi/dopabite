@@ -81,6 +81,12 @@ export async function saveMyRating(restaurant: Restaurant, rating: RatingEntry) 
   return response.rating
 }
 
+export async function deleteMyRating(poiId: string) {
+  return requestJson<{ ok: boolean }>(`/api/restaurants/${encodeURIComponent(poiId)}/my-rating`, {
+    method: 'DELETE',
+  })
+}
+
 export function getAccountState() {
   return requestJson<AccountState>('/api/me/state')
 }
@@ -113,6 +119,14 @@ export async function replaceCloudLocations(locations: SavedLocation[]) {
     body: JSON.stringify({ locations }),
   })
   return response.savedLocations
+}
+
+export async function updateRatedRestaurantSnapshots(restaurants: Restaurant[]) {
+  const response = await requestJson<{ ratedRestaurants: Restaurant[] }>('/api/me/restaurant-snapshots', {
+    method: 'PUT',
+    body: JSON.stringify({ restaurants }),
+  })
+  return response.ratedRestaurants
 }
 
 export function isUnauthorized(error: unknown) {

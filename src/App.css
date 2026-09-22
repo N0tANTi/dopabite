@@ -1700,6 +1700,58 @@ button {
   line-height: 1.55;
 }
 
+.rating-entry-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  margin-top: 9px;
+}
+
+.rating-entry-actions button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 29px;
+  padding: 5px 9px;
+  border: 1.5px solid var(--line);
+  border-radius: 9px;
+  background: var(--surface);
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.rating-entry-actions button:hover {
+  background: var(--yellow);
+  transform: translateY(-1px);
+}
+
+.rating-entry-actions button.is-danger {
+  border-color: #b81f4f;
+  color: #b81f4f;
+}
+
+.rating-delete-confirm {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 7px;
+  padding: 7px;
+  border-radius: 10px;
+  background: var(--pink-soft);
+}
+
+.rating-delete-confirm span {
+  margin-right: auto;
+  color: var(--ink);
+  font-size: 9px;
+  font-weight: 800;
+}
+
 .ratings-expand-button {
   width: 100%;
   margin-top: 11px;

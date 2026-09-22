@@ -8,6 +8,7 @@ type RatingDialogProps = {
   open: boolean
   restaurant: Restaurant | null
   nickname: string
+  initialRating?: RatingEntry
   onOpenChange: (open: boolean) => void
   onSubmit: (restaurant: Restaurant, rating: RatingEntry, nickname: string) => void
 }
@@ -47,11 +48,11 @@ function RatingDimension({ label, hint, value, onChange }: DimensionProps) {
   )
 }
 
-export function RatingDialog({ open, restaurant, nickname, onOpenChange, onSubmit }: RatingDialogProps) {
-  const [taste, setTaste] = useState(4)
-  const [value, setValue] = useState(4)
-  const [returnIntent, setReturnIntent] = useState(4)
-  const [note, setNote] = useState('')
+export function RatingDialog({ open, restaurant, nickname, initialRating, onOpenChange, onSubmit }: RatingDialogProps) {
+  const [taste, setTaste] = useState(initialRating?.taste ?? 4)
+  const [value, setValue] = useState(initialRating?.value ?? 4)
+  const [returnIntent, setReturnIntent] = useState(initialRating?.returnIntent ?? 4)
+  const [note, setNote] = useState(initialRating?.note ?? '')
   const [publicName, setPublicName] = useState(nickname)
   const [nicknameError, setNicknameError] = useState('')
 
@@ -72,7 +73,7 @@ export function RatingDialog({ open, restaurant, nickname, onOpenChange, onSubmi
               <Sparkle size={23} weight="fill" />
             </span>
             <div>
-              <Dialog.Title>给这家店打分</Dialog.Title>
+              <Dialog.Title>{initialRating ? '修改我的评分' : '给这家店打分'}</Dialog.Title>
               <Dialog.Description id="rating-description">
                 {restaurant.name}
               </Dialog.Description>
@@ -92,11 +93,12 @@ export function RatingDialog({ open, restaurant, nickname, onOpenChange, onSubmi
               }
               const normalizedNickname = normalizeNickname(publicName)
               onSubmit(restaurant, {
+                id: initialRating?.id,
                 taste,
                 value,
                 returnIntent,
                 note: note.trim(),
-                createdAt: new Date().toISOString(),
+                createdAt: initialRating?.createdAt ?? new Date().toISOString(),
               }, normalizedNickname)
               onOpenChange(false)
             }}
@@ -147,11 +149,11 @@ export function RatingDialog({ open, restaurant, nickname, onOpenChange, onSubmi
 
             <div className="dialog-actions">
               <Dialog.Close className="secondary-button" type="button">
-                先不评
+                {initialRating ? '取消修改' : '先不评'}
               </Dialog.Close>
               <button className="primary-button" type="submit">
                 <Check size={19} weight="bold" />
-                保存评分
+                {initialRating ? '保存修改' : '保存评分'}
               </button>
             </div>
           </form>

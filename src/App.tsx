@@ -33,6 +33,7 @@ import {
 } from './data/restaurants'
 import { authClient } from './lib/auth-client'
 import {
+  deleteMyRating,
   fetchPublicRatings,
   getAccountState,
   importLocalData,
@@ -41,6 +42,7 @@ import {
   saveMyRating,
   type RatingStore,
   type SavedLocation,
+  updateRatedRestaurantSnapshots,
   updateProfile,
 } from './lib/api'
 import { createNicknameSuggestion } from './lib/nickname'
@@ -198,6 +200,8 @@ function App() {
   const locationRequestTokenRef = useRef(0)
   const locationSyncTimeoutRef = useRef<number | null>(null)
   const localRatingsRef = useRef(localRatings)
+  const restaurantsRef = useRef(restaurants)
+  const cloudSyncEnabledRef = useRef(cloudSyncEnabled)
 
   const ratings = useMemo(() => {
     const merged: RatingStore = {}
@@ -232,6 +236,14 @@ function App() {
   useEffect(() => {
     localRatingsRef.current = localRatings
   }, [localRatings])
+
+  useEffect(() => {
+    restaurantsRef.current = restaurants
+  }, [restaurants])
+
+  useEffect(() => {
+    cloudSyncEnabledRef.current = cloudSyncEnabled
+  }, [cloudSyncEnabled])
 
   useEffect(() => {
     window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(savedLocations))
@@ -280,8 +292,25 @@ function App() {
     void getAccountState()
       .then((state) => {
         if (cancelled) return
-        setLocalRatings((current) => mergeOwnRatings(current, state.ratings))
-        setRatedRestaurants((current) => mergeRatedRestaurants(current, state.ratedRestaurants ?? []))
+        const mergedRatings = mergeOwnRatings(localRatingsRef.current, state.ratings)
+        const liveRatedRestaurants = restaurantsRef.current.filter(
+          (restaurant) => mergedRatings[restaurant.id]?.length,
+        )
+        localRatingsRef.current = mergedRatings
+        setLocalRatings(mergedRatings)
+        setRatedRestaurants((current) => mergeRatedRestaurants(
+          current,
+          mergeRatedRestaurants(state.ratedRestaurants ?? [], liveRatedRestaurants),
+        ))
+        if (liveRatedRestaurants.length) {
+          void updateRatedRestaurantSnapshots(liveRatedRestaurants)
+            .then((snapshots) => {
+              if (!cancelled) {
+                setRatedRestaurants((current) => mergeRatedRestaurants(current, snapshots))
+              }
+            })
+            .catch(() => undefined)
+        }
         setSavedLocations((current) => mergeSavedLocations(current, state.savedLocations))
         setProfileName(state.user.name)
         setCloudHydrated(true)
@@ -343,8 +372,26 @@ function App() {
     await refreshCommunityRatings(restaurants.map((restaurant) => restaurant.id))
   }, [localRatings, ratedRestaurants, refreshCommunityRatings, restaurants, savedLocations])
 
+  const cacheRatedRestaurantSnapshots = useCallback((snapshots: Restaurant[]) => {
+    if (!snapshots.length) return
+    setRatedRestaurants((current) => mergeRatedRestaurants(current, snapshots))
+    if (!cloudSyncEnabledRef.current) return
+    void updateRatedRestaurantSnapshots(snapshots)
+      .then((cloudSnapshots) => {
+        setRatedRestaurants((current) => mergeRatedRestaurants(current, cloudSnapshots))
+      })
+      .catch((error) => {
+        if (isUnauthorized(error)) setCloudSyncEnabled(false)
+      })
+  }, [])
+
+  const enrichRatedRestaurant = useCallback((restaurant: Restaurant) => {
+    cacheRatedRestaurantSnapshots([restaurant])
+  }, [cacheRatedRestaurantSnapshots])
+
   const handleRestaurantsLoaded = useCallback(
     (nextRestaurants: Restaurant[], nextCenter: [number, number]) => {
+      restaurantsRef.current = nextRestaurants
       setRestaurants(nextRestaurants)
       setCenter(nextCenter)
       setCategory('全部')
@@ -352,10 +399,10 @@ function App() {
         (restaurant) => localRatingsRef.current[restaurant.id]?.length,
       )
       if (matchingRestaurants.length) {
-        setRatedRestaurants((current) => mergeRatedRestaurants(current, matchingRestaurants))
+        cacheRatedRestaurantSnapshots(matchingRestaurants)
       }
     },
-    [],
+    [cacheRatedRestaurantSnapshots],
   )
 
   const openRestaurant = useCallback((restaurant: Restaurant) => {
@@ -424,7 +471,7 @@ function App() {
   const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
     const localRating: RatingEntry = {
       ...rating,
-      id: `local-${crypto.randomUUID()}`,
+      id: rating.id ?? `local-${crypto.randomUUID()}`,
       authorLabel: nickname,
       isMine: true,
       source: 'local',
@@ -462,6 +509,34 @@ function App() {
       setToast(`已同步对「${restaurant.name}」的评分`)
     } catch {
       setToast(`评分已保存在本机；云端恢复后可在账号里同步`)
+    }
+  }
+
+  const deleteRating = async (restaurant: Restaurant) => {
+    const previousRatings = localRatings[restaurant.id] ?? []
+    const previousRestaurant = ratedRestaurants.find((item) => item.id === restaurant.id) ?? restaurant
+    setLocalRatings((current) => {
+      const next = { ...current }
+      delete next[restaurant.id]
+      return next
+    })
+    setCommunityRatings((current) => ({
+      ...current,
+      [restaurant.id]: (current[restaurant.id] ?? []).filter((rating) => !rating.isMine),
+    }))
+    setRatedRestaurants((current) => current.filter((item) => item.id !== restaurant.id))
+    setToast(`已删除对「${restaurant.name}」的评价`)
+
+    try {
+      const session = await authClient.getSession()
+      if (!session.data) return
+      await deleteMyRating(restaurant.id)
+      await refreshCommunityRatings([restaurant.id])
+      setToast(`已从云端删除对「${restaurant.name}」的评价`)
+    } catch {
+      setLocalRatings((current) => ({ ...current, [restaurant.id]: previousRatings }))
+      setRatedRestaurants((current) => mergeRatedRestaurants(current, [previousRestaurant]))
+      setToast('删除未能同步，请检查网络后重试')
     }
   }
 
@@ -684,6 +759,8 @@ function App() {
             selectedId={selectedRestaurant?.id}
             onSelect={openRestaurantFromMap}
             onRestaurantsLoaded={handleRestaurantsLoaded}
+            onRestaurantEnriched={enrichRatedRestaurant}
+            enrichMissingDetails={viewMode === 'rated'}
             onLocationChange={setLocationInfo}
             resultLimit={resultLimit}
             locationRequest={locationRequest}
@@ -882,6 +959,9 @@ function App() {
           setDrawerOpen(false)
           window.setTimeout(() => setRatingOpen(true), reduceMotion ? 0 : 140)
         }}
+        onDeleteRating={(restaurant) => {
+          void deleteRating(restaurant)
+        }}
       />
 
       <RatingDialog
@@ -889,6 +969,7 @@ function App() {
         open={ratingOpen}
         restaurant={selectedRestaurant}
         nickname={profileName}
+        initialRating={selectedRestaurant ? localRatings[selectedRestaurant.id]?.[0] : undefined}
         onOpenChange={setRatingOpen}
         onSubmit={saveRating}
       />

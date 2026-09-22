@@ -498,6 +498,28 @@ app.put('/api/me/locations', async (c) => {
   return c.json({ savedLocations: listMyLocations(c.get('session').user.id) })
 })
 
+app.put('/api/me/restaurant-snapshots', async (c) => {
+  const body = await c.req.json<{ restaurants?: unknown[] }>().catch(() => null)
+  if (!body || !Array.isArray(body.restaurants) || body.restaurants.length > 100) {
+    throw jsonError('店铺快照最多为 100 个')
+  }
+
+  const userId = c.get('session').user.id
+  const ratedPoiIds = new Set(
+    (database.prepare('SELECT amap_poi_id AS poiId FROM ratings WHERE user_id = ?')
+      .all(userId) as unknown as { poiId: string }[])
+      .map((row) => row.poiId),
+  )
+  for (const value of body.restaurants) {
+    if (!value || typeof value !== 'object') continue
+    const id = cleanText((value as { id?: unknown }).id, 120)
+    if (!id || !ratedPoiIds.has(id)) continue
+    upsertRestaurant(parseRestaurant(value, id))
+  }
+
+  return c.json({ ratedRestaurants: listRatedRestaurants(userId) })
+})
+
 app.post('/api/me/import-local', async (c) => {
   const body = await c.req.json<Record<string, unknown>>().catch(() => null)
   if (!body) throw jsonError('请求内容不是有效的 JSON')

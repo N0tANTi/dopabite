@@ -186,6 +186,8 @@ type AmapCanvasProps = {
   selectedId?: string
   onSelect: (restaurant: Restaurant) => void
   onRestaurantsLoaded: (restaurants: Restaurant[], center: [number, number]) => void
+  onRestaurantEnriched: (restaurant: Restaurant) => void
+  enrichMissingDetails: boolean
   onLocationChange: (location: LocationInfo) => void
   resultLimit: number
   locationRequest: LocationRequest | null
@@ -240,6 +242,39 @@ function fetchNearbyPoiPool(
         return
       }
       resolve(result.poiList?.pois ?? [])
+    })
+  })
+}
+
+function fetchRestaurantDetails(amap: AMapModule, restaurant: Restaurant) {
+  const service = new amap.PlaceSearch({
+    pageSize: 5,
+    pageIndex: 1,
+    type: '050000',
+    extensions: 'all',
+  })
+
+  return new Promise<Restaurant | null>((resolve) => {
+    service.searchNearBy(restaurant.name, restaurant.location, 500, (status, result) => {
+      if (status !== 'complete' || typeof result === 'string') {
+        resolve(null)
+        return
+      }
+      const poi = result.poiList?.pois?.find((candidate) => candidate.id === restaurant.id)
+      if (!poi) {
+        resolve(null)
+        return
+      }
+      resolve({
+        ...restaurant,
+        name: poi.name ?? restaurant.name,
+        address: poi.address ? normalizeAddress(poi.address) : restaurant.address,
+        category: poi.type?.split(';').at(-1) ?? restaurant.category,
+        location: getCoordinates(poi.location) ?? restaurant.location,
+        image: getPhotoUrl(poi.photos) ?? restaurant.image,
+        amapRating: getPoiNumber(poi, 'rating') ?? restaurant.amapRating,
+        averageCost: getPoiNumber(poi, 'cost') ?? restaurant.averageCost,
+      })
     })
   })
 }
@@ -310,6 +345,8 @@ export function AmapCanvas({
   selectedId,
   onSelect,
   onRestaurantsLoaded,
+  onRestaurantEnriched,
+  enrichMissingDetails,
   onLocationChange,
   resultLimit,
   locationRequest,
@@ -326,6 +363,7 @@ export function AmapCanvas({
   const refreshSearchRef = useRef<(() => void) | null>(null)
   const applySavedLocationRef = useRef<((label: string, point: [number, number]) => void) | null>(null)
   const nearbySearchTokenRef = useRef(0)
+  const detailEnrichmentAttemptsRef = useRef<Set<string>>(new Set())
   const resultLimitRef = useRef(resultLimit)
   const activeSearchRef = useRef<{
     amap: AMapModule
@@ -782,6 +820,32 @@ export function AmapCanvas({
     if (!selectedRestaurant) return
     mapRef.current.setZoomAndCenter(Math.max(mapRef.current.getZoom(), 15), selectedRestaurant.location)
   }, [mode, restaurants, selectedId])
+
+  useEffect(() => {
+    const amap = amapRef.current
+    if (mode !== 'live' || !amap || !enrichMissingDetails) return
+    const targets = restaurants
+      .filter((restaurant) => (
+        !restaurant.image
+        || restaurant.amapRating === undefined
+        || restaurant.averageCost === undefined
+      ))
+      .filter((restaurant) => !detailEnrichmentAttemptsRef.current.has(restaurant.id))
+      .slice(0, 6)
+
+    for (const restaurant of targets) {
+      detailEnrichmentAttemptsRef.current.add(restaurant.id)
+      void fetchRestaurantDetails(amap, restaurant)
+        .then((enrichedRestaurant) => {
+          if (enrichedRestaurant) onRestaurantEnriched(enrichedRestaurant)
+        })
+        .catch(() => undefined)
+    }
+  }, [enrichMissingDetails, mode, onRestaurantEnriched, restaurants])
+
+  useEffect(() => {
+    if (!enrichMissingDetails) detailEnrichmentAttemptsRef.current.clear()
+  }, [enrichMissingDetails])
 
   const isDemo = mode === 'demo' || mode === 'error'
 

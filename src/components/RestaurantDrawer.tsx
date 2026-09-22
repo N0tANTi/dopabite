@@ -4,8 +4,10 @@ import {
   Clock,
   ForkKnife,
   MapPin,
+  PencilSimple,
   Sparkle,
   Star,
+  Trash,
   X,
 } from '@phosphor-icons/react'
 import { useState } from 'react'
@@ -18,6 +20,7 @@ type RestaurantDrawerProps = {
   open: boolean
   onOpenChange: (open: boolean) => void
   onRate: (restaurant: Restaurant) => void
+  onDeleteRating: (restaurant: Restaurant) => void
 }
 
 function formatRatingDate(value: string) {
@@ -32,13 +35,16 @@ export function RestaurantDrawer({
   open,
   onOpenChange,
   onRate,
+  onDeleteRating,
 }: RestaurantDrawerProps) {
   const [imageFailed, setImageFailed] = useState(false)
   const [showAllRatings, setShowAllRatings] = useState(false)
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
 
   if (!restaurant) return null
 
   const dopaScore = getDopaScore(ratings)
+  const ownRating = ratings.find((rating) => rating.isMine)
   const amapUrl = `https://uri.amap.com/marker?position=${restaurant.location.join(',')}&name=${encodeURIComponent(restaurant.name)}&callnative=0`
 
   return (
@@ -138,6 +144,41 @@ export function RestaurantDrawer({
                         <span>再吃 {rating.returnIntent}</span>
                       </div>
                       <p>{rating.note || '这次只打了分，没有留评语。'}</p>
+                      {rating.isMine && (
+                        <div className="rating-entry-actions">
+                          {pendingDeleteId === (rating.id ?? rating.createdAt) ? (
+                            <div className="rating-delete-confirm" role="alert">
+                              <span>确认删除这条评价？</span>
+                              <button type="button" onClick={() => setPendingDeleteId(null)}>取消</button>
+                              <button
+                                type="button"
+                                className="is-danger"
+                                onClick={() => {
+                                  setPendingDeleteId(null)
+                                  onDeleteRating(restaurant)
+                                }}
+                              >
+                                确认删除
+                              </button>
+                            </div>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => onRate(restaurant)}>
+                                <PencilSimple size={14} weight="bold" />
+                                修改评价
+                              </button>
+                              <button
+                                type="button"
+                                className="is-danger"
+                                onClick={() => setPendingDeleteId(rating.id ?? rating.createdAt)}
+                              >
+                                <Trash size={14} weight="bold" />
+                                删除评价
+                              </button>
+                            </>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </article>
                 ))}
@@ -160,8 +201,8 @@ export function RestaurantDrawer({
                 高德中查看
               </a>
               <button type="button" className="primary-button" onClick={() => onRate(restaurant)}>
-                <Sparkle size={19} weight="fill" />
-                给这家打分
+                {ownRating ? <PencilSimple size={19} weight="bold" /> : <Sparkle size={19} weight="fill" />}
+                {ownRating ? '修改我的评分' : '给这家打分'}
               </button>
             </div>
           </div>
