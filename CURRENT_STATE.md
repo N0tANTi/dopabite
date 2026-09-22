@@ -8,6 +8,8 @@ Last verified: 2026-09-22
 - Production: `https://food.archein.site/`.
 - Live AMap Web JS integration supplies POI identity, address, coordinates, photos, price, and AMap reference rating.
 - The discovery page supports geolocation, manual address search, map picking, saved locations, adjustable result count, category markers, marker-to-list selection, list search and sorting, restaurant details, local ratings, and a scroll-triggered back-to-top control.
+- “多巴胺榜”是独立的社区榜单，只收录至少有一条公开 DopaBite 评价的店铺；默认显示当前选址 2 公里内的上榜店，可切换到全部地点，并固定按社区综合分从高到低排列，同分时优先评价数更多的店。
+- 发现页和个人历史页的排序不再使用浏览器原生下拉框，已替换为与页面一致的贴纸式菜单，包含明确选中态、点击外部和 Esc 关闭、键盘焦点及减少动效适配。
 - “我评过的”默认加载当前账号在所有地点评过的店，而不是只检查当前附近的高德结果；用户可以切换为仅显示当前选址 2 公里内的评分记录。远距离评分店铺保留地图标点和列表联动，点击列表会将地图移动并放大到对应店铺。
 - Historical rated-store cards automatically refill missing photos, AMap score, and average cost from the live AMap POI when available, then save the richer snapshot to the account for later devices and locations.
 - Nearby discovery uses an AMap dining-type pool instead of the biased keyword “餐厅”, then reserves at most one nearby result each for McDonald's, KFC, and Pizza Hut. Results are deduplicated and distance-sorted while preserving the requested total count.
@@ -29,9 +31,9 @@ Last verified: 2026-09-22
 ## Production deployment
 
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
-- Active web release: `/srv/dopabite/releases/20260922161714`.
+- Active web release: `/srv/dopabite/releases/20260922171200`.
 - Active symlink: `/srv/dopabite/current`.
-- Active API release: `/srv/dopabite-api/releases/20260922161714`, linked from `/srv/dopabite-api/current`.
+- Active API release: `/srv/dopabite-api/releases/20260922171200`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
 - The first verified production snapshot was also copied off-host to `D:\anti\backups\dopabite`. Automated COS replication is not configured yet.
@@ -61,11 +63,13 @@ Last verified: 2026-09-22
 - Cross-location rating history passed a local API integration test with a far-away POI: the account state returned its restaurant snapshot, AMap rating, price, and owned rating. Lint, production build, dependency audit, and diff checks passed; the existing bundle-size warning remains.
 - Web/API release `20260922155323` is live. HTTPS, API health, served asset identity (`index-C_ezll21.js` and `index-BeMCkW43.css`), email-login feature detection, Nginx configuration, certificate SAN, live database integrity, and the additive restaurant metadata columns all passed. All 8 existing live ratings have matching restaurant snapshots. The pre-migration snapshot `dopabite-20260922T075212Z.sqlite3` was verified by the backup service and copied off-host with matching SHA-256 `d7909f5df7cbaef0245b852aa0abdbe446e28859b5e42b9df7aadfd77e84ad6`. Post-deploy storage is 26% of bytes and 10% of inodes.
 - Web/API release `20260922161714` adds historical POI detail enrichment plus own-rating edit/delete controls. Local browser QA verified prefilled editing and the inline delete confirmation. Isolated API tests verified missing-image enrichment and the full create/update/delete lifecycle while preserving the rating ID and original creation time. Production HTTPS, asset identity (`index-BFQVX5wk.js` and `index-BnfDpNuo.css`), API health/config, authentication on snapshot writes, Nginx, service logs, and database integrity passed. Snapshot `dopabite-20260922T081704Z.sqlite3` was copied off-host with matching SHA-256 `1b44b118110e5bdd767ac2e22781e80e54c0839be57e8b5feeddeb42816cb56f`; storage is 27% of bytes and 11% of inodes.
+- Web/API release `20260922171200` turns “多巴胺榜” into a real community ranking with nearby/all scope and a public rated-restaurant endpoint. Local API tests verified score order and removal after the last public rating is deleted; desktop browser QA verified the custom sort menu, scope switching, ranking order, map/list counts, and an empty error console. Production HTTPS, asset identity (`index-q2yKtdik.js` and `index-Daop-U0j.css`), API health/config, the 24-store ranking response, write authorization boundaries, certificate SAN, Nginx, service logs, and release retention passed. Snapshot `dopabite-20260922T091556Z.sqlite3` was copied off-host with matching SHA-256 `bd33a93aae110544d15e8053b814809208ba709bf7b71082d940fbc2ad8b7508`; storage remains 27% of bytes and 11% of inodes.
 
 ## Known limitations and blockers
 
 - The AMap result set can still contain adjacent non-food POIs such as tourism or beauty listings. Tightening the source filtering is the next data-quality fix.
-- The production JavaScript bundle is about 620 kB minified and triggers Vite's chunk-size warning after adding the auth client.
+- The production JavaScript bundle is about 644 kB minified and still triggers Vite's chunk-size warning.
+- The early-stage community ranking currently returns all rated restaurant snapshots and fetches public rating details in bounded batches. Add server pagination or summary fields before the number of rated stores becomes large.
 - Ratings publish immediately with fixed-window write limiting; there is no moderation console, account deletion UI, or content-reporting flow yet.
 - Passwordless email login and Tencent SES API delivery are enabled in production. A real-inbox code delivery and second-device account recovery test are still pending; if Tencent rejects or delays delivery, disable the provider values and return the UI to its safe pending state.
 - Daily server-local backups are active and the first snapshot has an off-host copy, but continuous off-host COS replication still needs credentials and a restore drill.

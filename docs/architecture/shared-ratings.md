@@ -73,7 +73,8 @@ Better Auth 原生支持[匿名账号及后续绑定](https://better-auth.com/do
 
 ## API 边界
 
-- `GET /api/ratings?poiId=...`：公开评分摘要和评价列表
+- `GET /api/ratings?poiIds=...`：批量返回公开评分摘要和评价列表
+- `GET /api/rankings`：返回至少有一条公开评价的餐厅快照，按社区综合分、评价数和最近更新时间排序；前端再按当前选址提供附近/全部范围
 - `PUT /api/restaurants/:poiId/my-rating`：新增或更新自己的评分
 - `DELETE /api/restaurants/:poiId/my-rating`：删除自己的评分
 - `GET /api/me/state`：当前用户的评分、关联店铺快照和私有收藏地点

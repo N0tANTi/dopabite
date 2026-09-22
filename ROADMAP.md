@@ -31,5 +31,6 @@
 
 ## P1: performance pass
 
-- Split map, account, and detail code and reduce the initial JavaScript bundle below the current Vite warning threshold (currently about 620 kB minified).
-- Acceptance: `npm run build` completes without the >500 kB chunk warning and the production smoke test still passes.
+- Split map, account, and detail code and reduce the initial JavaScript bundle below the current Vite warning threshold (currently about 644 kB minified).
+- Add pagination or server-side ranking summaries before the community-rated restaurant set becomes large; the current early-stage endpoint returns every rated restaurant and the client fetches rating details in 50-POI batches.
+- Acceptance: `npm run build` completes without the >500 kB chunk warning, a large ranking does not require downloading every public review up front, and the production smoke test still passes.
