@@ -1,22 +1,22 @@
 # DopaBite roadmap
 
-## P0: shared ratings API
-
-- Architecture: `docs/architecture/shared-ratings.md`.
-- Next action: add a same-origin Node.js API, SQLite migrations, anonymous Better Auth sessions, Passkey binding, and rating Upsert endpoints.
-- Dependencies: choose the public nickname rules and whether anonymous ratings publish immediately or enter a short moderation queue.
-- Acceptance: two different browsers can submit ratings for the same AMap POI and both see the same server-calculated community score.
-
 ## P0: durable database backups
 
-- Next action: provision `/srv/dopabite-data/`, implement consistent SQLite snapshots, and configure an off-host Tencent COS backup target before accepting production ratings.
-- Acceptance: a verified restore test can recover users and ratings without touching code releases.
+- Current: `/srv/dopabite-data/` is persistent, daily verified SQLite snapshots retain seven copies, and the first production snapshot has a checksum-verified operator-machine copy.
+- Next action: configure automated Tencent COS replication with at least 30-day retention, then perform and document a restore drill.
+- Dependency: COS bucket, least-privilege credentials, and retention policy.
+- Acceptance: a scheduled off-host copy and a verified restore test can recover users, ratings, and saved locations without touching code releases.
 
-## P1: account binding
+## P1: account and moderation controls
 
-- Start with anonymous sessions and Passkey so initial rating has no email step.
-- Add WeChat website QR login after the required Open Platform application is approved; keep email OTP as recovery and compatibility fallback.
-- Acceptance: an anonymous user's ratings survive account binding and appear on a second device after login.
+- Add deletion for a user's own rating, account deletion, content reporting, moderation queue, and an operator review surface.
+- Decide whether to add public nicknames; current public labels are only “匿名食客” and “已登录食客”.
+- Acceptance: users can remove their content and account, and reported public notes can be reviewed without direct database edits.
+
+## P1: WeChat login
+
+- Add website QR login after the required WeChat Open Platform application is approved; keep email OTP as a compatibility/recovery option only if needed.
+- Acceptance: an anonymous user's existing ratings and private favorites survive WeChat account linking and appear on a second device.
 
 ## P0: tighten restaurant-only results
 
@@ -25,5 +25,5 @@
 
 ## P1: performance pass
 
-- Split the map/detail code and reduce the initial JavaScript bundle below the current Vite warning threshold.
+- Split map, account, and detail code and reduce the initial JavaScript bundle below the current Vite warning threshold (currently about 620 kB minified).
 - Acceptance: `npm run build` completes without the >500 kB chunk warning and the production smoke test still passes.

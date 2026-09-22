@@ -56,3 +56,5 @@ Keep the active release plus the two most recent verified rollback releases. Do 
 To roll back the web app, atomically point `/srv/dopabite/current.next` at the selected verified release, move it over `/srv/dopabite/current`, run `sudo nginx -t`, reload Nginx, and repeat the health checks. Roll back the API independently by switching `/srv/dopabite-api/current.next`, restarting `dopabite-api`, and rechecking `/api/health`.
 
 Database migrations are additive. Before a migration, create and verify a snapshot. A code rollback does not automatically restore or delete database data. Local snapshots retain the seven newest verified copies; an off-host COS target is still required for disaster recovery and must never share credentials through Git.
+
+Until COS replication is configured, copy the newest `.sqlite3` snapshot and its `.sha256` sidecar to the operator backup directory outside this Git repository, then compare the SHA-256 digest locally. This manual copy is only a stopgap; it does not replace scheduled off-host replication. Never copy the live WAL database files directly.
