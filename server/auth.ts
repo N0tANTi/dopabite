@@ -9,6 +9,7 @@ import { generateNickname } from './nicknames.js'
 export const appOrigin = process.env.APP_ORIGIN ?? 'http://localhost:5173'
 const isProduction = process.env.NODE_ENV === 'production'
 const configuredSecret = process.env.BETTER_AUTH_SECRET
+const emailOtpTestCode = getEmailOtpTestCode()
 
 if (isProduction && !configuredSecret) {
   throw new Error('BETTER_AUTH_SECRET is required in production')
@@ -44,7 +45,7 @@ export const auth = betterAuth({
       async sendVerificationOTP(data) {
         await sendEmailOtp(data)
       },
-      generateOTP: getEmailOtpTestCode() ? () => getEmailOtpTestCode() : undefined,
+      ...(emailOtpTestCode ? { generateOTP: () => emailOtpTestCode } : {}),
       expiresIn: 5 * 60,
       allowedAttempts: 3,
       storeOTP: 'hashed',
