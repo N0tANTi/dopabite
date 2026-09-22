@@ -252,6 +252,14 @@ function coordinateKey(point: [number, number]) {
   return `${point[0].toFixed(6)},${point[1].toFixed(6)}`
 }
 
+function disposeMarkerRoots(roots: Map<AMapMarker, Root>) {
+  const activeRoots = Array.from(roots.values())
+  roots.clear()
+  window.setTimeout(() => {
+    activeRoots.forEach((root) => root.unmount())
+  }, 0)
+}
+
 function getRestaurantMarkerMeta(category: string, name = '') {
   const value = `${category} ${name}`
   if (/日本|寿司|刺身|拉面/.test(value)) return { icon: FishSimple, tone: 'japanese', label: '日料' }
@@ -599,8 +607,7 @@ export function AmapCanvas({
       applySavedLocationRef.current = null
       activeSearchRef.current = null
       isPickingRef.current = false
-      markerRoots.forEach((root) => root.unmount())
-      markerRoots.clear()
+      disposeMarkerRoots(markerRoots)
       clusterRef.current?.setMap(null)
       clusterRef.current = null
       if (mapClickHandler) mapRef.current?.off('click', mapClickHandler)
@@ -614,8 +621,7 @@ export function AmapCanvas({
     if (mode !== 'live' || !mapRef.current || !amapRef.current) return
     const map = mapRef.current
     const amap = amapRef.current
-    markerRootsRef.current.forEach((root) => root.unmount())
-    markerRootsRef.current.clear()
+    disposeMarkerRoots(markerRootsRef.current)
     clusterRef.current?.setMap(null)
     clusterRef.current = null
     map.clearMap()

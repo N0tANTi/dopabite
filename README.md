@@ -10,15 +10,16 @@
 - 展示附近餐厅、真实店铺图片、高德参考分和人均消费
 - 地图与店铺列表联动，支持分类、搜索、数量调整和排序
 - 用口味、性价比、再来意愿组成独立的 DopaBite 评分
+- 首次评分免注册，评分会同步到社区；收藏地点只在本人账号中同步
+- 支持 Passkey 登录，不需要设置和记忆密码
 - 桌面优先的多巴胺视觉，兼容窄屏和减少动态效果设置
-
-> 当前评分保存在浏览器本地。共享评分、渐进式账号和服务端存储方案见 [架构设计](docs/architecture/shared-ratings.md)。
 
 ## 技术栈
 
 - React 19、TypeScript、Vite
 - 高德地图 Web JS API 2.0
 - Motion、Radix UI、Phosphor Icons
+- Hono、Better Auth、SQLite WAL
 - Nginx，部署于腾讯云
 
 ## 本地运行
@@ -31,6 +32,12 @@ cp .env.example .env.local
 npm run dev
 ```
 
+另开一个终端启动本地 API：
+
+```bash
+npm run dev:api
+```
+
 在 `.env.local` 中填写高德 Web JS API Key 和安全密钥：
 
 ```text
@@ -39,6 +46,8 @@ VITE_AMAP_SECURITY_CODE=
 ```
 
 没有配置高德凭据时，页面会使用内置的静安寺真实 POI 示例和明确标注的演示地图。
+
+本地 API 默认使用 `http://localhost:5173` 和 `.data/dopabite.sqlite3`。生产环境变量示例见 [`deploy/api.env.example`](deploy/api.env.example)，其中 `BETTER_AUTH_SECRET` 必须使用随机密钥。
 
 ## 检查
 
@@ -51,7 +60,8 @@ npm run build
 
 - 高德：店铺名称、地址、坐标、分类、图片、人均消费和外部参考分
 - DopaBite：用户填写的口味、性价比、再来意愿和文字评价
-- 密钥只放在 `.env.local`，不要提交到 Git
+- 社区评分公开；收藏地点只对所属账号可见，不保存实时位置轨迹
+- 地图和服务端密钥只放在本地或服务器环境文件，不要提交到 Git
 
 ## 参考
 

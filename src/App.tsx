@@ -17,6 +17,7 @@ import confetti from 'canvas-confetti'
 import { AnimatePresence, motion, useMotionValueEvent, useReducedMotion, useScroll } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import './App.css'
+import { AccountDialog } from './components/AccountDialog'
 import { AmapCanvas, type LocationInfo, type LocationRequest } from './components/AmapCanvas'
 import { RatingDialog } from './components/RatingDialog'
 import { RestaurantCard } from './components/RestaurantCard'
@@ -29,18 +30,24 @@ import {
   type RatingEntry,
   type Restaurant,
 } from './data/restaurants'
+import { authClient } from './lib/auth-client'
+import {
+  fetchPublicRatings,
+  getAccountState,
+  importLocalData,
+  isUnauthorized,
+  replaceCloudLocations,
+  saveMyRating,
+  type RatingStore,
+  type SavedLocation,
+} from './lib/api'
 
-type RatingStore = Record<string, RatingEntry[]>
 type SortMode = 'distance' | 'amap' | 'dopa' | 'budget'
 type ViewMode = 'nearby' | 'rated' | 'ranking'
-type SavedLocation = {
-  id: string
-  label: string
-  point: [number, number]
-}
 
 const RATING_STORAGE_KEY = 'dopabite-ratings-v1'
 const LOCATION_STORAGE_KEY = 'dopabite-saved-locations-v1'
+const CLOUD_SYNC_STORAGE_KEY = 'dopabite-cloud-sync-enabled-v1'
 
 const initialLocationInfo: LocationInfo = {
   label: '正在识别位置',
@@ -51,10 +58,47 @@ const initialLocationInfo: LocationInfo = {
 function loadRatings(): RatingStore {
   try {
     const value = window.localStorage.getItem(RATING_STORAGE_KEY)
-    return value ? (JSON.parse(value) as RatingStore) : {}
+    const parsed = value ? (JSON.parse(value) as RatingStore) : {}
+    return Object.fromEntries(
+      Object.entries(parsed).map(([poiId, entries]) => [
+        poiId,
+        entries.map((entry) => ({ ...entry, isMine: true, source: entry.source ?? 'local' })),
+      ]),
+    )
   } catch {
     return {}
   }
+}
+
+function loadCloudSyncPreference() {
+  return window.localStorage.getItem(CLOUD_SYNC_STORAGE_KEY) === 'true'
+}
+
+function latestOwnRating(entries: RatingEntry[] = []) {
+  return [...entries]
+    .filter((entry) => entry.isMine !== false)
+    .sort((a, b) => (b.updatedAt ?? b.createdAt).localeCompare(a.updatedAt ?? a.createdAt))[0]
+}
+
+function mergeOwnRatings(local: RatingStore, cloud: RatingStore): RatingStore {
+  const merged: RatingStore = { ...local }
+  for (const [poiId, entries] of Object.entries(cloud)) {
+    const remote = latestOwnRating(entries.filter((entry) => entry.isMine))
+    if (!remote) continue
+    const localEntry = latestOwnRating(merged[poiId])
+    if (!localEntry || (remote.updatedAt ?? remote.createdAt) >= (localEntry.updatedAt ?? localEntry.createdAt)) {
+      merged[poiId] = [{ ...remote, isMine: true, source: 'cloud' }]
+    }
+  }
+  return merged
+}
+
+function mergeSavedLocations(local: SavedLocation[], cloud: SavedLocation[]) {
+  const merged = new Map<string, SavedLocation>()
+  for (const location of [...local, ...cloud]) {
+    if (!merged.has(location.id)) merged.set(location.id, location)
+  }
+  return Array.from(merged.values()).slice(0, 12)
 }
 
 function loadSavedLocations(): SavedLocation[] {
@@ -78,12 +122,15 @@ function loadSavedLocations(): SavedLocation[] {
 function App() {
   const reduceMotion = useReducedMotion()
   const { scrollY } = useScroll()
+  const { data: session } = authClient.useSession()
   const [restaurants, setRestaurants] = useState<Restaurant[]>(seedRestaurants)
   const [center, setCenter] = useState<[number, number]>(DEMO_CENTER)
-  const [ratings, setRatings] = useState<RatingStore>(loadRatings)
+  const [localRatings, setLocalRatings] = useState<RatingStore>(loadRatings)
+  const [communityRatings, setCommunityRatings] = useState<RatingStore>({})
   const [selectedRestaurant, setSelectedRestaurant] = useState<Restaurant | null>(null)
   const [drawerOpen, setDrawerOpen] = useState(false)
   const [ratingOpen, setRatingOpen] = useState(false)
+  const [accountOpen, setAccountOpen] = useState(false)
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('全部')
   const [sortMode, setSortMode] = useState<SortMode>('distance')
@@ -96,7 +143,27 @@ function App() {
   const [resultLimit, setResultLimit] = useState(40)
   const [resultLimitDraft, setResultLimitDraft] = useState('40')
   const [showBackToTop, setShowBackToTop] = useState(false)
+  const [cloudSyncEnabled, setCloudSyncEnabled] = useState(loadCloudSyncPreference)
+  const [cloudHydrated, setCloudHydrated] = useState(false)
   const locationRequestTokenRef = useRef(0)
+  const locationSyncTimeoutRef = useRef<number | null>(null)
+
+  const ratings = useMemo(() => {
+    const merged: RatingStore = {}
+    const poiIds = new Set([...Object.keys(communityRatings), ...Object.keys(localRatings)])
+    for (const poiId of poiIds) {
+      const entries = [...(communityRatings[poiId] ?? [])]
+      for (const ownRating of localRatings[poiId] ?? []) {
+        const matchingIndex = ownRating.id
+          ? entries.findIndex((entry) => entry.id === ownRating.id)
+          : -1
+        if (matchingIndex >= 0) entries[matchingIndex] = ownRating
+        else entries.unshift(ownRating)
+      }
+      merged[poiId] = entries
+    }
+    return merged
+  }, [communityRatings, localRatings])
 
   useMotionValueEvent(scrollY, 'change', (latest) => {
     const shouldShow = latest > 640
@@ -104,18 +171,96 @@ function App() {
   })
 
   useEffect(() => {
-    window.localStorage.setItem(RATING_STORAGE_KEY, JSON.stringify(ratings))
-  }, [ratings])
+    window.localStorage.setItem(RATING_STORAGE_KEY, JSON.stringify(localRatings))
+  }, [localRatings])
 
   useEffect(() => {
     window.localStorage.setItem(LOCATION_STORAGE_KEY, JSON.stringify(savedLocations))
   }, [savedLocations])
 
   useEffect(() => {
+    window.localStorage.setItem(CLOUD_SYNC_STORAGE_KEY, String(cloudSyncEnabled))
+  }, [cloudSyncEnabled])
+
+  useEffect(() => {
     if (!toast) return
     const timeout = window.setTimeout(() => setToast(''), 3_500)
     return () => window.clearTimeout(timeout)
   }, [toast])
+
+  const refreshCommunityRatings = useCallback(async (poiIds: string[]) => {
+    if (!poiIds.length) return
+    try {
+      const nextRatings = await fetchPublicRatings(poiIds)
+      setCommunityRatings((current) => ({ ...current, ...nextRatings }))
+    } catch {
+      // Keep local ratings usable while the API is offline.
+    }
+  }, [])
+
+  useEffect(() => {
+    let cancelled = false
+    void fetchPublicRatings(restaurants.map((restaurant) => restaurant.id))
+      .then((nextRatings) => {
+        if (!cancelled) setCommunityRatings((current) => ({ ...current, ...nextRatings }))
+      })
+      .catch(() => undefined)
+    return () => {
+      cancelled = true
+    }
+  }, [restaurants])
+
+  useEffect(() => {
+    if (!cloudSyncEnabled) return
+    let cancelled = false
+    void getAccountState()
+      .then((state) => {
+        if (cancelled) return
+        setLocalRatings((current) => mergeOwnRatings(current, state.ratings))
+        setSavedLocations((current) => mergeSavedLocations(current, state.savedLocations))
+        setCloudHydrated(true)
+      })
+      .catch((error) => {
+        if (cancelled) return
+        if (isUnauthorized(error)) {
+          setCloudSyncEnabled(false)
+          setCloudHydrated(false)
+        }
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [cloudSyncEnabled])
+
+  useEffect(() => {
+    if (!cloudSyncEnabled || !cloudHydrated) return
+    if (locationSyncTimeoutRef.current) window.clearTimeout(locationSyncTimeoutRef.current)
+    locationSyncTimeoutRef.current = window.setTimeout(() => {
+      void replaceCloudLocations(savedLocations).catch((error) => {
+        if (isUnauthorized(error)) setCloudSyncEnabled(false)
+      })
+    }, 450)
+    return () => {
+      if (locationSyncTimeoutRef.current) window.clearTimeout(locationSyncTimeoutRef.current)
+    }
+  }, [cloudHydrated, cloudSyncEnabled, savedLocations])
+
+  const syncLocalData = useCallback(async () => {
+    let session = await authClient.getSession()
+    if (!session.data) {
+      const signIn = await authClient.signIn.anonymous()
+      if (signIn.error) throw new Error(signIn.error.message)
+      session = await authClient.getSession()
+    }
+    if (!session.data) throw new Error('无法建立云端身份，请稍后再试')
+
+    const result = await importLocalData(localRatings, savedLocations, restaurants)
+    setLocalRatings((current) => mergeOwnRatings(current, result.ratings))
+    setSavedLocations((current) => mergeSavedLocations(current, result.savedLocations))
+    setCloudSyncEnabled(true)
+    setCloudHydrated(true)
+    await refreshCommunityRatings(restaurants.map((restaurant) => restaurant.id))
+  }, [localRatings, refreshCommunityRatings, restaurants, savedLocations])
 
   const handleRestaurantsLoaded = useCallback(
     (nextRestaurants: Restaurant[], nextCenter: [number, number]) => {
@@ -157,7 +302,7 @@ function App() {
         restaurant.address.toLowerCase().includes(normalizedQuery) ||
         restaurant.category.toLowerCase().includes(normalizedQuery)
       const matchesCategory = category === '全部' || restaurant.category === category
-      const matchesView = viewMode !== 'rated' || (ratings[restaurant.id]?.length ?? 0) > 0
+      const matchesView = viewMode !== 'rated' || (localRatings[restaurant.id]?.length ?? 0) > 0
       return matchesQuery && matchesCategory && matchesView
     })
 
@@ -170,14 +315,20 @@ function App() {
       }
       return distanceInMeters(center, a.location) - distanceInMeters(center, b.location)
     })
-  }, [category, center, query, ratings, restaurants, sortMode, viewMode])
+  }, [category, center, localRatings, query, ratings, restaurants, sortMode, viewMode])
 
-  const saveRating = (restaurant: Restaurant, rating: RatingEntry) => {
-    setRatings((current) => ({
+  const saveRating = async (restaurant: Restaurant, rating: RatingEntry) => {
+    const localRating: RatingEntry = {
+      ...rating,
+      id: `local-${crypto.randomUUID()}`,
+      isMine: true,
+      source: 'local',
+    }
+    setLocalRatings((current) => ({
       ...current,
-      [restaurant.id]: [rating, ...(current[restaurant.id] ?? [])],
+      [restaurant.id]: [localRating],
     }))
-    setToast(`已保存对「${restaurant.name}」的评分`)
+    setToast(`已保存对「${restaurant.name}」的评分，正在同步…`)
     if (!reduceMotion) {
       void confetti({
         particleCount: 110,
@@ -186,6 +337,23 @@ function App() {
         origin: { x: 0.76, y: 0.72 },
         colors: ['#ff3377', '#ffd027', '#00c98d', '#1ec8ff', '#7657e8'],
       })
+    }
+
+    try {
+      const session = await authClient.getSession()
+      if (!session.data) {
+        const signIn = await authClient.signIn.anonymous()
+        if (signIn.error) throw new Error(signIn.error.message)
+      }
+      const savedRating = await saveMyRating(restaurant, localRating)
+      setLocalRatings((current) => ({
+        ...current,
+        [restaurant.id]: [{ ...savedRating, isMine: true, source: 'cloud' }],
+      }))
+      await refreshCommunityRatings([restaurant.id])
+      setToast(`已同步对「${restaurant.name}」的评分`)
+    } catch {
+      setToast(`评分已保存在本机；云端恢复后可在账号里同步`)
     }
   }
 
@@ -291,12 +459,13 @@ function App() {
           </button>
           <button
             type="button"
-            className="profile-button"
+            className={`profile-button ${session ? 'has-session' : ''}`}
             aria-label="个人中心"
             title="个人中心"
-            onClick={() => setToast('账号系统尚未接入；当前评分只保存在这台设备上')}
+            onClick={() => setAccountOpen(true)}
           >
             <UserCircle size={27} weight="duotone" />
+            {session && <span className="profile-status-dot" aria-label="已建立云端身份" />}
           </button>
         </div>
       </header>
@@ -367,7 +536,9 @@ function App() {
               )}
             </div>
 
-            <p className="location-menu-note">收藏仅保存在当前浏览器；切换地点后，地图和附近店铺会一起刷新。</p>
+            <p className="location-menu-note">
+              {cloudSyncEnabled ? '收藏已开启私密云同步；切换地点后，地图和附近店铺会一起刷新。' : '收藏先保存在当前浏览器；登录后可私密同步到其他设备。'}
+            </p>
           </motion.aside>
         )}
       </AnimatePresence>
@@ -546,6 +717,22 @@ function App() {
         restaurant={selectedRestaurant}
         onOpenChange={setRatingOpen}
         onSubmit={saveRating}
+      />
+
+      <AccountDialog
+        open={accountOpen}
+        onOpenChange={setAccountOpen}
+        localRatingCount={Object.keys(localRatings).length}
+        savedLocationCount={savedLocations.length}
+        syncEnabled={cloudSyncEnabled}
+        onSync={syncLocalData}
+        onSignedOut={() => {
+          setCloudSyncEnabled(false)
+          setCloudHydrated(false)
+          setLocalRatings({})
+          setSavedLocations([])
+          setToast('已退出账号；云端数据仍然保留')
+        }}
       />
 
       <AnimatePresence>

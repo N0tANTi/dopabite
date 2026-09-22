@@ -1,9 +1,14 @@
 export type RatingEntry = {
+  id?: string
   taste: number
   value: number
   returnIntent: number
   note: string
   createdAt: string
+  updatedAt?: string
+  authorLabel?: string
+  isMine?: boolean
+  source?: 'local' | 'cloud'
 }
 
 export type Restaurant = {

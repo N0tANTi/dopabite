@@ -1,0 +1,22 @@
+[Unit]
+Description=DopaBite API
+After=network.target
+
+[Service]
+Type=simple
+User=anti
+Group=anti
+WorkingDirectory=/srv/dopabite-api/current
+Environment=NODE_ENV=production
+EnvironmentFile=/etc/dopabite/api.env
+ExecStart=/usr/bin/node dist-server/index.js
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectHome=true
+ProtectSystem=strict
+ReadWritePaths=/srv/dopabite-data
+
+[Install]
+WantedBy=multi-user.target

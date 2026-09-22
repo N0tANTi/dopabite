@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily DopaBite database snapshot
+
+[Timer]
+OnCalendar=*-*-* 03:30:00 Asia/Shanghai
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target

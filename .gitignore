@@ -10,6 +10,11 @@ lerna-debug.log*
 node_modules
 dist
 dist-ssr
+dist-server
+.data/
+*.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 *.local
 .env
 .env.*
