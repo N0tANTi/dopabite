@@ -1,0 +1,59 @@
+# DopaBite
+
+一个用高德地图发现附近餐厅、查看真实店铺信息并分享个人评分的桌面网页应用。
+
+**在线体验：<https://food.archein.site/>**
+
+## 功能
+
+- 获取当前位置，也可以输入地址、地图选点或切换收藏地点
+- 展示附近餐厅、真实店铺图片、高德参考分和人均消费
+- 地图与店铺列表联动，支持分类、搜索、数量调整和排序
+- 用口味、性价比、再来意愿组成独立的 DopaBite 评分
+- 桌面优先的多巴胺视觉，兼容窄屏和减少动态效果设置
+
+> 当前评分保存在浏览器本地。共享评分、渐进式账号和服务端存储方案见 [架构设计](docs/architecture/shared-ratings.md)。
+
+## 技术栈
+
+- React 19、TypeScript、Vite
+- 高德地图 Web JS API 2.0
+- Motion、Radix UI、Phosphor Icons
+- Nginx，部署于腾讯云
+
+## 本地运行
+
+```bash
+git clone https://github.com/N0tANTi/dopabite.git
+cd dopabite
+npm install
+copy .env.example .env.local
+npm run dev
+```
+
+在 `.env.local` 中填写高德 Web JS API Key 和安全密钥：
+
+```text
+VITE_AMAP_KEY=
+VITE_AMAP_SECURITY_CODE=
+```
+
+没有配置高德凭据时，页面会使用内置的静安寺真实 POI 示例和明确标注的演示地图。
+
+## 检查
+
+```bash
+npm run lint
+npm run build
+```
+
+## 数据边界
+
+- 高德：店铺名称、地址、坐标、分类、图片、人均消费和外部参考分
+- DopaBite：用户填写的口味、性价比、再来意愿和文字评价
+- 密钥只放在 `.env.local`，不要提交到 Git
+
+## 参考
+
+- [poi-marker](https://github.com/Jichao-Yang/poi-marker)：高德地图与 POI 接入方式
+- [Tastemap](https://github.com/Rocabor/restaurant-ranking-app)：地图、账号与社区评分产品结构
