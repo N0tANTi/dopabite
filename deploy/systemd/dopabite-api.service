@@ -9,6 +9,7 @@ Group=anti
 WorkingDirectory=/srv/dopabite-api/current
 Environment=NODE_ENV=production
 EnvironmentFile=/etc/dopabite/api.env
+UMask=0077
 ExecStart=/usr/bin/node dist-server/index.js
 Restart=on-failure
 RestartSec=3
