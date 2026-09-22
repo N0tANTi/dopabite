@@ -296,6 +296,24 @@ function listOwnRatings(poiIds: string[], userId: string) {
   )
 }
 
+function mapRestaurantRows(rows: RatedRestaurantRow[]) {
+  return rows
+    .filter((row) => Number.isFinite(row.longitude) && Number.isFinite(row.latitude))
+    .map((row) => ({
+      id: row.id,
+      name: row.name,
+      address: row.address,
+      category: row.category,
+      location: [row.longitude, row.latitude] as [number, number],
+      businessArea: row.businessArea,
+      ...(row.image ? { image: row.image } : {}),
+      ...(Number.isFinite(row.amapRating) ? { amapRating: row.amapRating } : {}),
+      ...(Number.isFinite(row.averageCost) ? { averageCost: row.averageCost } : {}),
+      ...(row.openTime ? { openTime: row.openTime } : {}),
+      source: row.source === 'amap-mcp' ? 'amap-mcp' as const : 'amap-live' as const,
+    }))
+}
+
 function listRatedRestaurants(userId: string) {
   const rows = database.prepare(`
     SELECT
@@ -317,21 +335,35 @@ function listRatedRestaurants(userId: string) {
     ORDER BY r.updated_at DESC
   `).all(userId) as unknown as RatedRestaurantRow[]
 
-  return rows
-    .filter((row) => Number.isFinite(row.longitude) && Number.isFinite(row.latitude))
-    .map((row) => ({
-      id: row.id,
-      name: row.name,
-      address: row.address,
-      category: row.category,
-      location: [row.longitude, row.latitude] as [number, number],
-      businessArea: row.businessArea,
-      ...(row.image ? { image: row.image } : {}),
-      ...(Number.isFinite(row.amapRating) ? { amapRating: row.amapRating } : {}),
-      ...(Number.isFinite(row.averageCost) ? { averageCost: row.averageCost } : {}),
-      ...(row.openTime ? { openTime: row.openTime } : {}),
-      source: row.source === 'amap-mcp' ? 'amap-mcp' as const : 'amap-live' as const,
-    }))
+  return mapRestaurantRows(rows)
+}
+
+function listRankedRestaurants() {
+  const rows = database.prepare(`
+    SELECT
+      s.amap_poi_id AS id,
+      s.name,
+      s.address,
+      s.category,
+      s.longitude,
+      s.latitude,
+      s.business_area AS businessArea,
+      s.image_url AS image,
+      s.amap_rating AS amapRating,
+      s.average_cost AS averageCost,
+      s.open_time AS openTime,
+      s.source
+    FROM restaurants s
+    JOIN ratings r ON r.amap_poi_id = s.amap_poi_id
+    WHERE r.status = 'published'
+    GROUP BY s.amap_poi_id
+    ORDER BY
+      AVG((r.taste_score + r.value_score + r.return_score) / 3.0) DESC,
+      COUNT(r.id) DESC,
+      MAX(r.updated_at) DESC
+  `).all() as unknown as RatedRestaurantRow[]
+
+  return mapRestaurantRows(rows)
 }
 
 function listMyLocations(userId: string) {
@@ -411,6 +443,8 @@ app.get('/api/health', (c) => {
 })
 
 app.get('/api/config', (c) => c.json({ emailOtpEnabled }))
+
+app.get('/api/rankings', (c) => c.json({ restaurants: listRankedRestaurants() }))
 
 app.use('/api/me/*', async (c, next) => {
   const session = await auth.api.getSession({ headers: c.req.raw.headers })

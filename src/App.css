@@ -973,7 +973,7 @@ button {
   box-shadow: 0 0 0 3px rgb(255 208 39 / 42%);
 }
 
-.rated-scope-control {
+.scope-control {
   display: inline-flex;
   flex: 0 0 auto;
   align-items: center;
@@ -985,7 +985,7 @@ button {
   box-shadow: 3px 3px 0 rgb(255 51 119 / 18%);
 }
 
-.rated-scope-control button {
+.scope-control button {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -1002,17 +1002,17 @@ button {
   transition: transform 150ms ease, background 150ms ease, color 150ms ease;
 }
 
-.rated-scope-control button:hover {
+.scope-control button:hover {
   color: var(--ink);
 }
 
-.rated-scope-control button.is-active {
-  background: var(--ink);
-  color: #fffafb;
+.scope-control button.is-active {
+  background: var(--line);
+  color: var(--surface);
   transform: translateY(-1px);
 }
 
-.rated-scope-control button:focus-visible {
+.scope-control button:focus-visible {
   outline: 3px solid rgb(255 208 39 / 62%);
   outline-offset: 2px;
 }
@@ -1108,28 +1108,206 @@ button {
   transform: translateY(-1px);
 }
 
-.sort-select {
-  display: inline-flex;
+.sort-menu {
+  position: relative;
+  z-index: 12;
   flex: 0 0 auto;
-  align-items: center;
-  gap: 5px;
-  padding: 7px 10px;
-  border: 1.5px solid var(--line);
-  border-radius: var(--control-radius);
-  background: var(--yellow);
-  font-size: 11px;
-  font-weight: 800;
 }
 
-.sort-select select {
-  max-width: 112px;
-  border: 0;
-  outline: 0;
-  background: transparent;
+.sort-menu-trigger,
+.ranking-sort-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 7px 11px;
+  border: 2px solid var(--line);
+  border-radius: var(--control-radius);
+  background: var(--yellow);
+  box-shadow: 3px 3px 0 var(--shadow);
   color: var(--ink);
   font-size: 11px;
-  font-weight: 800;
+  font-weight: 850;
+  white-space: nowrap;
+}
+
+.sort-menu-trigger {
+  color: #241d25;
   cursor: pointer;
+  transition: transform 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.sort-menu-trigger:hover {
+  background: #ffdc62;
+  box-shadow: 4px 4px 0 var(--shadow);
+  transform: translateY(-1px);
+}
+
+.sort-menu-trigger:active {
+  box-shadow: 2px 2px 0 var(--shadow);
+  transform: translateY(1px) scale(0.98);
+}
+
+.sort-menu-trigger:focus-visible {
+  outline: 3px solid rgb(246 47 116 / 32%);
+  outline-offset: 3px;
+}
+
+.sort-menu-trigger > svg:last-child {
+  transition: transform 160ms ease;
+}
+
+.sort-menu-trigger > svg:last-child.is-open {
+  transform: rotate(180deg);
+}
+
+.ranking-sort-badge {
+  background: var(--pink-soft);
+  box-shadow: 3px 3px 0 rgb(246 47 116 / 22%);
+}
+
+.ranking-sort-badge svg {
+  color: var(--pink-dark);
+}
+
+.sort-menu-popover {
+  position: absolute;
+  top: calc(100% + 10px);
+  right: 0;
+  width: 246px;
+  overflow: hidden;
+  padding: 7px;
+  border: 2px solid var(--line);
+  border-radius: 17px;
+  background: var(--surface);
+  box-shadow: 7px 7px 0 var(--pink-soft), 0 18px 44px var(--shadow-soft);
+  transform-origin: top right;
+}
+
+.sort-menu-heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  padding: 8px 9px 9px;
+}
+
+.sort-menu-heading span {
+  font-size: 12px;
+  font-weight: 900;
+}
+
+.sort-menu-heading small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.sort-menu-popover > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 24px;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 10px 9px;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--ink);
+  text-align: left;
+  cursor: pointer;
+  transition: background 140ms ease, transform 140ms ease;
+}
+
+.sort-menu-popover > button:hover {
+  background: var(--surface-soft);
+}
+
+.sort-menu-popover > button:active {
+  transform: scale(0.985);
+}
+
+.sort-menu-popover > button:focus-visible {
+  outline: 3px solid rgb(255 208 47 / 60%);
+  outline-offset: -2px;
+}
+
+.sort-menu-popover > button.is-active {
+  background: var(--pink-soft);
+}
+
+.sort-menu-popover > button > span:first-child {
+  display: grid;
+  gap: 2px;
+}
+
+.sort-menu-popover strong {
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.sort-menu-popover small {
+  color: var(--muted);
+  font-size: 9px;
+  font-weight: 650;
+}
+
+.sort-check {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border: 1.5px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: #241d25;
+}
+
+.sort-menu-popover > button.is-active .sort-check {
+  background: var(--yellow);
+  box-shadow: 2px 2px 0 var(--shadow);
+}
+
+.ranking-loading {
+  display: grid;
+  gap: 14px;
+  padding-top: 4px;
+}
+
+.ranking-loading-row {
+  display: grid;
+  grid-template-columns: 136px minmax(0, 1fr);
+  gap: 15px;
+  min-height: 162px;
+  padding: 10px;
+  border: 2px solid rgb(49 40 50 / 10%);
+  border-radius: var(--card-radius);
+  background: var(--surface);
+}
+
+.ranking-loading-row i,
+.ranking-loading-row b {
+  border-radius: 14px;
+  background: linear-gradient(110deg, var(--surface-soft) 25%, var(--pink-soft) 42%, var(--surface-soft) 59%);
+  background-size: 240% 100%;
+}
+
+.ranking-loading-row b {
+  align-self: center;
+  height: 82px;
+  border-radius: 10px;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .ranking-loading-row i,
+  .ranking-loading-row b {
+    animation: ranking-shimmer 1.35s ease-in-out infinite;
+  }
+}
+
+@keyframes ranking-shimmer {
+  to {
+    background-position: -180% 0;
+  }
 }
 
 .restaurant-list {
@@ -2676,8 +2854,19 @@ button {
     flex-direction: column;
   }
 
-  .sort-select {
+  .sort-menu,
+  .ranking-sort-badge {
     align-self: flex-start;
+  }
+
+  .sort-menu-popover {
+    right: auto;
+    left: 0;
+    width: min(246px, calc(100vw - 28px));
+  }
+
+  .ranking-loading-row {
+    grid-template-columns: 118px minmax(0, 1fr);
   }
 
   .score-duo {

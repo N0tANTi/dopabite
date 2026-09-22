@@ -1,6 +1,7 @@
 import {
   ArrowUp,
   CaretDown,
+  Check,
   Crosshair,
   ForkKnife,
   Heart,
@@ -35,6 +36,7 @@ import { authClient } from './lib/auth-client'
 import {
   deleteMyRating,
   fetchPublicRatings,
+  fetchRankedRestaurants,
   getAccountState,
   importLocalData,
   isUnauthorized,
@@ -49,12 +51,19 @@ import { createNicknameSuggestion } from './lib/nickname'
 
 type SortMode = 'distance' | 'amap' | 'dopa' | 'budget'
 type ViewMode = 'nearby' | 'rated' | 'ranking'
-type RatedScope = 'all' | 'nearby'
+type LocationScope = 'all' | 'nearby'
 
 const RATING_STORAGE_KEY = 'dopabite-ratings-v1'
 const RATED_RESTAURANT_STORAGE_KEY = 'dopabite-rated-restaurants-v1'
 const LOCATION_STORAGE_KEY = 'dopabite-saved-locations-v1'
 const CLOUD_SYNC_STORAGE_KEY = 'dopabite-cloud-sync-enabled-v1'
+
+const SORT_OPTIONS: Array<{ value: SortMode; label: string; detail: string }> = [
+  { value: 'distance', label: '离我最近', detail: '按当前地点的直线距离' },
+  { value: 'dopa', label: '多巴胺最高', detail: '按社区用户的综合评分' },
+  { value: 'amap', label: '高德参考分最高', detail: '按高德平台参考评分' },
+  { value: 'budget', label: '人均最低', detail: '优先显示人均价格较低的店' },
+]
 
 const initialLocationInfo: LocationInfo = {
   label: '正在识别位置',
@@ -173,6 +182,9 @@ function App() {
   const { scrollY } = useScroll()
   const { data: session } = authClient.useSession()
   const [restaurants, setRestaurants] = useState<Restaurant[]>(seedRestaurants)
+  const [rankedRestaurants, setRankedRestaurants] = useState<Restaurant[]>([])
+  const [rankingLoading, setRankingLoading] = useState(true)
+  const [rankingError, setRankingError] = useState('')
   const [center, setCenter] = useState<[number, number]>(DEMO_CENTER)
   const [localRatings, setLocalRatings] = useState<RatingStore>(loadRatings)
   const [ratedRestaurants, setRatedRestaurants] = useState<Restaurant[]>(loadRatedRestaurants)
@@ -184,8 +196,10 @@ function App() {
   const [query, setQuery] = useState('')
   const [category, setCategory] = useState('全部')
   const [sortMode, setSortMode] = useState<SortMode>('distance')
+  const [sortMenuOpen, setSortMenuOpen] = useState(false)
   const [viewMode, setViewMode] = useState<ViewMode>('nearby')
-  const [ratedScope, setRatedScope] = useState<RatedScope>('all')
+  const [ratedScope, setRatedScope] = useState<LocationScope>('all')
+  const [rankingScope, setRankingScope] = useState<LocationScope>('nearby')
   const [showLocationMenu, setShowLocationMenu] = useState(false)
   const [toast, setToast] = useState('')
   const [locationInfo, setLocationInfo] = useState<LocationInfo>(initialLocationInfo)
@@ -199,6 +213,7 @@ function App() {
   const [profileName, setProfileName] = useState(createNicknameSuggestion)
   const locationRequestTokenRef = useRef(0)
   const locationSyncTimeoutRef = useRef<number | null>(null)
+  const sortMenuRef = useRef<HTMLDivElement>(null)
   const localRatingsRef = useRef(localRatings)
   const restaurantsRef = useRef(restaurants)
   const cloudSyncEnabledRef = useRef(cloudSyncEnabled)
@@ -269,9 +284,58 @@ function App() {
     }
   }, [])
 
+  useEffect(() => {
+    let cancelled = false
+    void fetchRankedRestaurants()
+      .then((nextRestaurants) => {
+        if (cancelled) return
+        setRankedRestaurants(nextRestaurants)
+        setRankingError('')
+      })
+      .catch(() => {
+        if (!cancelled) setRankingError('榜单暂时没能加载，请稍后重试')
+      })
+      .finally(() => {
+        if (!cancelled) setRankingLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [])
+
+  const refreshRankings = useCallback(async () => {
+    try {
+      const nextRestaurants = await fetchRankedRestaurants()
+      setRankedRestaurants(nextRestaurants)
+      setRankingError('')
+    } catch {
+      setRankingError('榜单暂时没能加载，请稍后重试')
+    } finally {
+      setRankingLoading(false)
+    }
+  }, [])
+
+  useEffect(() => {
+    if (!sortMenuOpen) return
+    const closeOnOutsidePress = (event: PointerEvent) => {
+      if (!sortMenuRef.current?.contains(event.target as Node)) setSortMenuOpen(false)
+    }
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setSortMenuOpen(false)
+    }
+    document.addEventListener('pointerdown', closeOnOutsidePress)
+    document.addEventListener('keydown', closeOnEscape)
+    return () => {
+      document.removeEventListener('pointerdown', closeOnOutsidePress)
+      document.removeEventListener('keydown', closeOnEscape)
+    }
+  }, [sortMenuOpen])
+
   const ratingPoiIds = useMemo(
-    () => Array.from(new Set([...restaurants, ...ratedRestaurants].map((restaurant) => restaurant.id))),
-    [ratedRestaurants, restaurants],
+    () => Array.from(new Set(
+      [...restaurants, ...ratedRestaurants, ...rankedRestaurants].map((restaurant) => restaurant.id),
+    )),
+    [rankedRestaurants, ratedRestaurants, restaurants],
   )
 
   useEffect(() => {
@@ -370,7 +434,8 @@ function App() {
     setCloudSyncEnabled(true)
     setCloudHydrated(true)
     await refreshCommunityRatings(restaurants.map((restaurant) => restaurant.id))
-  }, [localRatings, ratedRestaurants, refreshCommunityRatings, restaurants, savedLocations])
+    await refreshRankings()
+  }, [localRatings, ratedRestaurants, refreshCommunityRatings, refreshRankings, restaurants, savedLocations])
 
   const cacheRatedRestaurantSnapshots = useCallback((snapshots: Restaurant[]) => {
     if (!snapshots.length) return
@@ -385,14 +450,28 @@ function App() {
       })
   }, [])
 
-  const enrichRatedRestaurant = useCallback((restaurant: Restaurant) => {
-    cacheRatedRestaurantSnapshots([restaurant])
+  const enrichRestaurantDetails = useCallback((restaurant: Restaurant) => {
+    setRankedRestaurants((current) => (
+      current.some((item) => item.id === restaurant.id)
+        ? mergeRatedRestaurants(current, [restaurant])
+        : current
+    ))
+    if (localRatingsRef.current[restaurant.id]?.length) {
+      cacheRatedRestaurantSnapshots([restaurant])
+    }
   }, [cacheRatedRestaurantSnapshots])
 
   const handleRestaurantsLoaded = useCallback(
     (nextRestaurants: Restaurant[], nextCenter: [number, number]) => {
       restaurantsRef.current = nextRestaurants
       setRestaurants(nextRestaurants)
+      setRankedRestaurants((current) => {
+        const rankedIds = new Set(current.map((restaurant) => restaurant.id))
+        const liveRankedRestaurants = nextRestaurants.filter((restaurant) => rankedIds.has(restaurant.id))
+        return liveRankedRestaurants.length
+          ? mergeRatedRestaurants(current, liveRankedRestaurants)
+          : current
+      })
       setCenter(nextCenter)
       setCategory('全部')
       const matchingRestaurants = nextRestaurants.filter(
@@ -434,7 +513,18 @@ function App() {
     [allRatedRestaurants, center],
   )
 
-  const sourceRestaurants = viewMode === 'rated' ? allRatedRestaurants : restaurants
+  const nearbyRankedCount = useMemo(
+    () => rankedRestaurants.filter(
+      (restaurant) => distanceInMeters(center, restaurant.location) <= NEARBY_RADIUS_METERS,
+    ).length,
+    [center, rankedRestaurants],
+  )
+
+  const sourceRestaurants = viewMode === 'rated'
+    ? allRatedRestaurants
+    : viewMode === 'ranking'
+      ? rankedRestaurants
+      : restaurants
 
   const categories = useMemo(
     () => ['全部', ...Array.from(new Set(sourceRestaurants.map((restaurant) => restaurant.category))).slice(0, 5)],
@@ -454,7 +544,11 @@ function App() {
         viewMode !== 'rated'
         || ratedScope === 'all'
         || distanceInMeters(center, restaurant.location) <= NEARBY_RADIUS_METERS
-      return matchesQuery && matchesCategory && matchesRatedScope
+      const matchesRankingScope =
+        viewMode !== 'ranking'
+        || rankingScope === 'all'
+        || distanceInMeters(center, restaurant.location) <= NEARBY_RADIUS_METERS
+      return matchesQuery && matchesCategory && matchesRatedScope && matchesRankingScope
     })
 
     const activeSort = viewMode === 'ranking' ? 'dopa' : sortMode
@@ -462,11 +556,14 @@ function App() {
       if (activeSort === 'amap') return (b.amapRating ?? -1) - (a.amapRating ?? -1)
       if (activeSort === 'budget') return (a.averageCost ?? Number.MAX_SAFE_INTEGER) - (b.averageCost ?? Number.MAX_SAFE_INTEGER)
       if (activeSort === 'dopa') {
-        return (getDopaScore(ratings[b.id]) ?? -1) - (getDopaScore(ratings[a.id]) ?? -1)
+        const scoreDifference = (getDopaScore(ratings[b.id]) ?? -1) - (getDopaScore(ratings[a.id]) ?? -1)
+        if (scoreDifference !== 0) return scoreDifference
+        const ratingCountDifference = (ratings[b.id]?.length ?? 0) - (ratings[a.id]?.length ?? 0)
+        if (ratingCountDifference !== 0) return ratingCountDifference
       }
       return distanceInMeters(center, a.location) - distanceInMeters(center, b.location)
     })
-  }, [category, center, query, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
+  }, [category, center, query, rankingScope, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
 
   const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
     const localRating: RatingEntry = {
@@ -506,6 +603,7 @@ function App() {
         [restaurant.id]: [{ ...savedRating, isMine: true, source: 'cloud' }],
       }))
       await refreshCommunityRatings([restaurant.id])
+      await refreshRankings()
       setToast(`已同步对「${restaurant.name}」的评分`)
     } catch {
       setToast(`评分已保存在本机；云端恢复后可在账号里同步`)
@@ -532,6 +630,7 @@ function App() {
       if (!session.data) return
       await deleteMyRating(restaurant.id)
       await refreshCommunityRatings([restaurant.id])
+      await refreshRankings()
       setToast(`已从云端删除对「${restaurant.name}」的评价`)
     } catch {
       setLocalRatings((current) => ({ ...current, [restaurant.id]: previousRatings }))
@@ -589,6 +688,9 @@ function App() {
       point: location.point,
     })
   }
+
+  const activeSortOption = SORT_OPTIONS.find((option) => option.value === sortMode) ?? SORT_OPTIONS[0]
+  const rankingScopeCount = rankingScope === 'nearby' ? nearbyRankedCount : rankedRestaurants.length
 
   return (
     <div className="app-shell">
@@ -739,18 +841,34 @@ function App() {
         <div className="map-column">
           <div className="map-intro">
             <div>
-              <span className="eyebrow">今天想吃点什么</span>
+              <span className="eyebrow">
+                {viewMode === 'ranking' ? 'DopaBite 社区榜' : '今天想吃点什么'}
+              </span>
               <h1>
                 {viewMode === 'rated' ? (
                   <>吃过的每一家，<br />都留在这里。</>
+                ) : viewMode === 'ranking' ? (
+                  <>大家评出来的，<br />才是真榜单。</>
                 ) : (
                   <>附近的真实店，<br />吃完由你打分。</>
                 )}
               </h1>
             </div>
             <div className="map-intro-stat">
-              <strong>{viewMode === 'rated' ? allRatedRestaurants.length : restaurants.length}</strong>
-              <span>{viewMode === 'rated' ? '家已评分店铺' : '家附近店铺'}</span>
+              <strong>
+                {viewMode === 'rated'
+                  ? allRatedRestaurants.length
+                  : viewMode === 'ranking'
+                    ? rankingScopeCount
+                    : restaurants.length}
+              </strong>
+              <span>
+                {viewMode === 'rated'
+                  ? '家已评分店铺'
+                  : viewMode === 'ranking'
+                    ? rankingScope === 'nearby' ? '家附近上榜' : '家社区上榜'
+                    : '家附近店铺'}
+              </span>
             </div>
           </div>
 
@@ -759,8 +877,8 @@ function App() {
             selectedId={selectedRestaurant?.id}
             onSelect={openRestaurantFromMap}
             onRestaurantsLoaded={handleRestaurantsLoaded}
-            onRestaurantEnriched={enrichRatedRestaurant}
-            enrichMissingDetails={viewMode === 'rated'}
+            onRestaurantEnriched={enrichRestaurantDetails}
+            enrichMissingDetails={viewMode === 'rated' || viewMode === 'ranking'}
             onLocationChange={setLocationInfo}
             resultLimit={resultLimit}
             locationRequest={locationRequest}
@@ -769,7 +887,7 @@ function App() {
           />
         </div>
 
-        <aside className="results-panel" aria-label="附近店铺列表">
+        <aside className="results-panel" aria-label={viewMode === 'ranking' ? '多巴胺榜单' : '店铺列表'}>
           <div className="results-header">
             <div>
               <div className="results-title-row">
@@ -785,28 +903,50 @@ function App() {
                   ? ratedScope === 'all'
                     ? `${visibleRestaurants.length} 个结果，包含所有地点`
                     : `${visibleRestaurants.length} 个结果，当前地点 2 公里内共 ${nearbyRatedCount} 家`
+                  : viewMode === 'ranking'
+                    ? rankingLoading
+                      ? '正在读取社区榜单'
+                      : rankingError && !rankedRestaurants.length
+                        ? rankingError
+                        : rankingScope === 'nearby'
+                          ? `${visibleRestaurants.length} 家上榜，当前地点 2 公里内共 ${nearbyRankedCount} 家`
+                          : `${visibleRestaurants.length} 家上榜，包含所有地点`
                   : `${visibleRestaurants.length} 个结果，店铺数据来自高德`}
               </p>
             </div>
-            {viewMode === 'rated' ? (
-              <div className="rated-scope-control" role="group" aria-label="评分店铺范围">
+            {viewMode === 'rated' || viewMode === 'ranking' ? (
+              <div
+                className="scope-control"
+                role="group"
+                aria-label={viewMode === 'ranking' ? '榜单地点范围' : '评分店铺范围'}
+              >
                 <button
                   type="button"
-                  className={ratedScope === 'all' ? 'is-active' : ''}
-                  onClick={() => setRatedScope('all')}
-                  aria-pressed={ratedScope === 'all'}
+                  className={(viewMode === 'ranking' ? rankingScope === 'nearby' : ratedScope === 'all') ? 'is-active' : ''}
+                  onClick={() => {
+                    if (viewMode === 'ranking') setRankingScope('nearby')
+                    else setRatedScope('all')
+                  }}
+                  aria-pressed={viewMode === 'ranking' ? rankingScope === 'nearby' : ratedScope === 'all'}
                 >
-                  <Sparkle size={14} weight="fill" />
-                  全部 {allRatedRestaurants.length}
+                  {viewMode === 'ranking'
+                    ? <MapPin size={14} weight="fill" />
+                    : <Sparkle size={14} weight="fill" />}
+                  {viewMode === 'ranking' ? `附近 ${nearbyRankedCount}` : `全部 ${allRatedRestaurants.length}`}
                 </button>
                 <button
                   type="button"
-                  className={ratedScope === 'nearby' ? 'is-active' : ''}
-                  onClick={() => setRatedScope('nearby')}
-                  aria-pressed={ratedScope === 'nearby'}
+                  className={(viewMode === 'ranking' ? rankingScope === 'all' : ratedScope === 'nearby') ? 'is-active' : ''}
+                  onClick={() => {
+                    if (viewMode === 'ranking') setRankingScope('all')
+                    else setRatedScope('nearby')
+                  }}
+                  aria-pressed={viewMode === 'ranking' ? rankingScope === 'all' : ratedScope === 'nearby'}
                 >
-                  <MapPin size={14} weight="fill" />
-                  附近 {nearbyRatedCount}
+                  {viewMode === 'ranking'
+                    ? <Sparkle size={14} weight="fill" />
+                    : <MapPin size={14} weight="fill" />}
+                  {viewMode === 'ranking' ? `全部 ${rankedRestaurants.length}` : `附近 ${nearbyRatedCount}`}
                 </button>
               </div>
             ) : (
@@ -863,19 +1003,83 @@ function App() {
               ))}
             </div>
 
-            <label className="sort-select">
-              <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
-              <select value={sortMode} onChange={(event) => setSortMode(event.target.value as SortMode)}>
-                <option value="distance">离我最近</option>
-                <option value="dopa">多巴胺最高</option>
-                <option value="amap">高德参考分最高</option>
-                <option value="budget">人均最低</option>
-              </select>
-            </label>
+            {viewMode === 'ranking' ? (
+              <div className="ranking-sort-badge" aria-label="榜单按多巴胺分从高到低排列">
+                <Trophy size={17} weight="fill" aria-hidden="true" />
+                <span>多巴胺分排行</span>
+              </div>
+            ) : (
+              <div className="sort-menu" ref={sortMenuRef}>
+                <button
+                  type="button"
+                  className="sort-menu-trigger"
+                  onClick={() => setSortMenuOpen((current) => !current)}
+                  aria-haspopup="menu"
+                  aria-expanded={sortMenuOpen}
+                >
+                  <SlidersHorizontal size={17} weight="bold" aria-hidden="true" />
+                  <span>{activeSortOption.label}</span>
+                  <CaretDown
+                    className={sortMenuOpen ? 'is-open' : ''}
+                    size={14}
+                    weight="bold"
+                    aria-hidden="true"
+                  />
+                </button>
+                <AnimatePresence>
+                  {sortMenuOpen && (
+                    <motion.div
+                      className="sort-menu-popover"
+                      role="menu"
+                      aria-label="选择店铺排序方式"
+                      initial={reduceMotion ? false : { opacity: 0, y: -8, scale: 0.97 }}
+                      animate={{ opacity: 1, y: 0, scale: 1 }}
+                      exit={{ opacity: 0, y: -5, scale: 0.98 }}
+                      transition={{ duration: 0.16, ease: [0.16, 1, 0.3, 1] }}
+                    >
+                      <div className="sort-menu-heading">
+                        <span>怎么排</span>
+                        <small>选一个更合口味的顺序</small>
+                      </div>
+                      {SORT_OPTIONS.map((option) => (
+                        <button
+                          type="button"
+                          role="menuitemradio"
+                          aria-checked={sortMode === option.value}
+                          className={sortMode === option.value ? 'is-active' : ''}
+                          onClick={() => {
+                            setSortMode(option.value)
+                            setSortMenuOpen(false)
+                          }}
+                          key={option.value}
+                        >
+                          <span>
+                            <strong>{option.label}</strong>
+                            <small>{option.detail}</small>
+                          </span>
+                          <span className="sort-check" aria-hidden="true">
+                            {sortMode === option.value && <Check size={14} weight="bold" />}
+                          </span>
+                        </button>
+                      ))}
+                    </motion.div>
+                  )}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
 
           <div className="restaurant-list">
-            {visibleRestaurants.length > 0 ? (
+            {viewMode === 'ranking' && rankingLoading ? (
+              <div className="ranking-loading" aria-live="polite" aria-label="正在加载多巴胺榜">
+                {[0, 1, 2].map((item) => (
+                  <span className="ranking-loading-row" aria-hidden="true" key={item}>
+                    <i />
+                    <b />
+                  </span>
+                ))}
+              </div>
+            ) : visibleRestaurants.length > 0 ? (
               visibleRestaurants.map((restaurant, index) => (
                 <RestaurantCard
                   key={restaurant.id}
@@ -893,18 +1097,34 @@ function App() {
                   <ForkKnife size={34} weight="duotone" />
                 </span>
                 <h3>
-                  {viewMode !== 'rated'
-                    ? '这个条件没找到店'
-                    : !allRatedRestaurants.length
+                  {viewMode === 'ranking'
+                    ? rankingError && !rankedRestaurants.length
+                      ? '榜单暂时走丢了'
+                      : !rankedRestaurants.length
+                        ? '榜单还在等第一条评价'
+                        : rankingScope === 'nearby' && !nearbyRankedCount
+                          ? '附近暂时没有上榜店铺'
+                          : '这个筛选没有上榜店铺'
+                    : viewMode !== 'rated'
+                      ? '这个条件没找到店'
+                      : !allRatedRestaurants.length
                       ? '你还没打过分'
                       : ratedScope === 'nearby' && !nearbyRatedCount
                         ? '附近还没有你评过的店'
                         : '这个筛选没有结果'}
                 </h3>
                 <p>
-                  {viewMode !== 'rated'
-                    ? '换个关键词或清除品类筛选试试。'
-                    : !allRatedRestaurants.length
+                  {viewMode === 'ranking'
+                    ? rankingError && !rankedRestaurants.length
+                      ? '网络恢复后再试一次，社区评价不会丢失。'
+                      : !rankedRestaurants.length
+                        ? '去发现附近写下第一条评价，这家店就会加入榜单。'
+                        : rankingScope === 'nearby' && !nearbyRankedCount
+                          ? '切换到“全部”，看看其他地点的社区高分店。'
+                          : '换个关键词或清除品类筛选试试。'
+                    : viewMode !== 'rated'
+                      ? '换个关键词或清除品类筛选试试。'
+                      : !allRatedRestaurants.length
                       ? '先去发现附近的店，吃完再回来写真话。'
                       : ratedScope === 'nearby' && !nearbyRatedCount
                         ? '你的历史评分都还在，切回“全部”就能看到。'
@@ -916,14 +1136,27 @@ function App() {
                   onClick={() => {
                     setQuery('')
                     setCategory('全部')
-                    if (viewMode === 'rated' && allRatedRestaurants.length) {
+                    if (viewMode === 'ranking' && rankingError && !rankedRestaurants.length) {
+                      setRankingLoading(true)
+                      void refreshRankings()
+                    } else if (viewMode === 'ranking' && rankedRestaurants.length) {
+                      setRankingScope('all')
+                    } else if (viewMode === 'rated' && allRatedRestaurants.length) {
                       setRatedScope('all')
                     } else {
                       setViewMode('nearby')
                     }
                   }}
                 >
-                  {viewMode === 'rated' && allRatedRestaurants.length ? '显示全部评价' : '重置筛选'}
+                  {viewMode === 'ranking'
+                    ? rankingError && !rankedRestaurants.length
+                      ? '重新加载'
+                      : rankedRestaurants.length
+                        ? '查看全部榜单'
+                        : '去发现附近'
+                    : viewMode === 'rated' && allRatedRestaurants.length
+                      ? '显示全部评价'
+                      : '重置筛选'}
                 </button>
               </div>
             )}

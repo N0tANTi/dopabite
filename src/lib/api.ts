@@ -70,6 +70,11 @@ export async function fetchPublicRatings(poiIds: string[]) {
   return Object.assign({}, ...responses.map((response) => response.ratings)) as RatingStore
 }
 
+export async function fetchRankedRestaurants() {
+  const response = await requestJson<{ restaurants: Restaurant[] }>('/api/rankings')
+  return response.restaurants
+}
+
 export async function saveMyRating(restaurant: Restaurant, rating: RatingEntry) {
   const response = await requestJson<{ rating: RatingEntry }>(
     `/api/restaurants/${encodeURIComponent(restaurant.id)}/my-rating`,
