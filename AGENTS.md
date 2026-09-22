@@ -10,4 +10,4 @@
 - Use Phosphor for interface icons. Do not hand-draw SVG icons or add emoji as UI decoration.
 - Respect `prefers-reduced-motion` and system color scheme. Preserve keyboard focus styles and usable empty/error states.
 - Durable project records live in `CURRENT_STATE.md`, `ROADMAP.md`, `docs/architecture/`, `docs/runbooks/deployment.md`, and `docs/history/`.
-- Production is served from the Tencent Cloud anti host at `https://food.archein.site/`. Static releases live under `/srv/dopabite/releases/`, with `/srv/dopabite/current` as the active symlink and `/etc/nginx/sites-available/food-archein-site` as the Nginx site config.
+- Production is served from the Tencent Cloud host whose operator-local SSH alias is `tengxunyun-anti`, at `https://food.archein.site/`. Never use the unrelated `aliyun-anti` host for this project. Static releases live under `/srv/dopabite/releases/`, with `/srv/dopabite/current` as the active symlink and `/etc/nginx/sites-available/food-archein-site` as the Nginx site config.

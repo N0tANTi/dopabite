@@ -1,4 +1,5 @@
 import nodemailer from 'nodemailer'
+import { sendTencentSesTemplateEmail, type TencentSesConfig } from './tencent-ses.js'
 
 const smtpHost = process.env.SMTP_HOST?.trim()
 const smtpPort = Number(process.env.SMTP_PORT ?? 465)
@@ -6,11 +7,30 @@ const smtpSecure = (process.env.SMTP_SECURE ?? 'true').toLowerCase() === 'true'
 const smtpUser = process.env.SMTP_USER?.trim()
 const smtpPass = process.env.SMTP_PASS
 const smtpFrom = process.env.SMTP_FROM?.trim()
+const tencentSecretId = process.env.TENCENTCLOUD_SECRET_ID?.trim()
+const tencentSecretKey = process.env.TENCENTCLOUD_SECRET_KEY
+const tencentSesRegion = process.env.TENCENT_SES_REGION?.trim() || 'ap-guangzhou'
+const tencentSesFrom = process.env.TENCENT_SES_FROM?.trim()
+const tencentSesTemplateId = Number(process.env.TENCENT_SES_TEMPLATE_ID)
 const testCode = process.env.NODE_ENV === 'test' ? process.env.EMAIL_OTP_TEST_CODE?.trim() : undefined
 const hasValidAuthPair = Boolean(smtpUser) === Boolean(smtpPass)
+const hasTencentCredentials = Boolean(tencentSecretId && tencentSecretKey)
+const hasTencentTemplate = Number.isSafeInteger(tencentSesTemplateId) && tencentSesTemplateId > 0
+
+const tencentSesConfig: TencentSesConfig | null = hasTencentCredentials && hasTencentTemplate && tencentSesFrom
+  ? {
+      secretId: tencentSecretId!,
+      secretKey: tencentSecretKey!,
+      region: tencentSesRegion,
+      fromEmailAddress: tencentSesFrom,
+      templateId: tencentSesTemplateId,
+    }
+  : null
 
 export const emailOtpEnabled = Boolean(
-  testCode || (smtpHost && smtpFrom && Number.isFinite(smtpPort) && hasValidAuthPair),
+  testCode
+    || tencentSesConfig
+    || (smtpHost && smtpFrom && Number.isFinite(smtpPort) && hasValidAuthPair),
 )
 
 const transport = smtpHost && smtpFrom && hasValidAuthPair
@@ -39,9 +59,19 @@ export async function sendEmailOtp(data: {
   type: keyof typeof purposeLabels
 }) {
   if (testCode) return
-  if (!transport || !smtpFrom) throw new Error('邮箱验证码服务尚未配置')
 
   const purpose = purposeLabels[data.type]
+  if (tencentSesConfig) {
+    await sendTencentSesTemplateEmail(tencentSesConfig, {
+      email: data.email,
+      otp: data.otp,
+      subject: `${data.otp} · ${purpose}`,
+    })
+    return
+  }
+
+  if (!transport || !smtpFrom) throw new Error('邮箱验证码服务尚未配置')
+
   await transport.sendMail({
     from: smtpFrom,
     to: data.email,

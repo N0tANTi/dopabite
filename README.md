@@ -47,7 +47,7 @@ VITE_AMAP_SECURITY_CODE=
 
 没有配置高德凭据时，页面会使用内置的静安寺真实 POI 示例和明确标注的演示地图。
 
-本地 API 默认使用 `http://localhost:5173` 和 `.data/dopabite.sqlite3`。生产环境变量示例见 [`deploy/api.env.example`](deploy/api.env.example)，其中 `BETTER_AUTH_SECRET` 必须使用随机密钥。填写 `SMTP_*` 配置后会自动开放邮箱验证码登录；未配置时界面会显示清晰的待开通状态。
+本地 API 默认使用 `http://localhost:5173` 和 `.data/dopabite.sqlite3`。生产环境变量示例见 [`deploy/api.env.example`](deploy/api.env.example)，其中 `BETTER_AUTH_SECRET` 必须使用随机密钥。推荐配置腾讯云 SES API 的 `TENCENTCLOUD_*` 与 `TENCENT_SES_*`；也可以使用 `SMTP_*` 回退。只有完整配置可用的邮件发送器后，界面才会开放邮箱验证码登录。
 
 ## 检查
 

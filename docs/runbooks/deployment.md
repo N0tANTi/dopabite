@@ -3,7 +3,7 @@
 ## Target
 
 - URL: `https://food.archein.site/`
-- Host: Tencent Cloud anti server. SSH target and identity stay in the operator's local configuration and are not committed.
+- Host: Tencent Cloud anti server. Its operator-local SSH alias is `tengxunyun-anti`; never deploy this project to the unrelated `aliyun-anti` host. The underlying address and identity stay in local SSH configuration and are not committed.
 - Release root: `/srv/dopabite/releases/`
 - Active symlink: `/srv/dopabite/current`
 - Nginx site: `/etc/nginx/sites-available/food-archein-site`
@@ -41,9 +41,11 @@ Install the checked-in Nginx template as `/etc/nginx/sites-available/food-archei
 
 ## Enabling email-code login
 
-Email login is feature-detected at API startup. Add `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM` to the root-owned `/etc/dopabite/api.env`; never put these values in Git, shell history, screenshots, or deployment logs. Use credentials limited to transactional sending for the verified sender/domain.
+Email login is feature-detected at API startup. Tencent Cloud SES API is the preferred production provider. Add `TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`, `TENCENT_SES_REGION`, `TENCENT_SES_FROM`, and `TENCENT_SES_TEMPLATE_ID` to the root-owned `/etc/dopabite/api.env`. The CAM key must belong to a programmatic-only sub-user limited to `ses:SendEmail`. The HTML template is checked in at `deploy/email-templates/dopabite-login-code.html` and uses the single variable `{{code}}`.
 
-Restart `dopabite-api.service`, confirm it is active, and verify that `https://food.archein.site/api/config` returns `{"emailOtpEnabled":true}`. Complete a real inbox test and then a fresh-browser sign-in test; the same public nickname, ratings, and private saved locations must appear. If delivery is delayed, duplicated, or rejected, remove the `SMTP_*` values, restart the API, and confirm the endpoint returns `false` so the UI falls back to its safe pending state.
+SMTP remains available as a fallback through `SMTP_HOST`, `SMTP_PORT`, `SMTP_SECURE`, `SMTP_USER`, `SMTP_PASS`, and `SMTP_FROM`. Never put provider credentials in Git, shell history, screenshots, or deployment logs. Incomplete SES or SMTP configuration must leave email login disabled.
+
+Restart `dopabite-api.service`, confirm it is active, and verify that `https://food.archein.site/api/config` returns `{"emailOtpEnabled":true}`. Complete a real inbox test and then a fresh-browser sign-in test; the same public nickname, ratings, and private saved locations must appear. If delivery is delayed, duplicated, or rejected, remove the active provider's SES or SMTP values, restart the API, and confirm the endpoint returns `false` so the UI falls back to its safe pending state.
 
 ## Verification
 
