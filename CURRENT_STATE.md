@@ -8,7 +8,7 @@ Last verified: 2026-09-23
 - Production: `https://food.archein.site/`.
 - Live AMap Web JS integration supplies POI identity, address, coordinates, photos, price, and AMap reference rating.
 - The discovery page supports geolocation, manual address search, map picking, saved locations, adjustable result count, category markers, marker-to-list selection, list search and sorting, restaurant details, local ratings, and a scroll-triggered back-to-top control.
-- Local, not yet deployed: when a discovery keyword has no nearby match, the user can search AMap dining POIs across all locations and return to nearby results. On narrow screens the three main views remain available, the map is shorter, and touch interaction with the map requires an explicit toggle so page scrolling can start over it.
+- When a discovery keyword has no nearby match, the user can search AMap dining POIs across all locations from the empty state and return to nearby results. On narrow screens the three main views remain available, the map is shorter, and touch interaction with the map requires an explicit toggle so page scrolling can start over it.
 - “多巴胺榜”是独立的社区榜单，只收录至少有一条公开 DopaBite 评价的店铺；默认显示当前选址 2 公里内的上榜店，可切换到全部地点，并固定按社区综合分从高到低排列，同分时优先评价数更多的店。
 - 发现页和个人历史页的排序不再使用浏览器原生下拉框，已替换为与页面一致的贴纸式菜单，包含明确选中态、点击外部和 Esc 关闭、键盘焦点及减少动效适配。
 - “我评过的”默认加载当前账号在所有地点评过的店，而不是只检查当前附近的高德结果；用户可以切换为仅显示当前选址 2 公里内的评分记录。远距离评分店铺保留地图标点和列表联动，点击列表会将地图移动并放大到对应店铺。
@@ -32,12 +32,12 @@ Last verified: 2026-09-23
 ## Production deployment
 
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
-- Active web release: `/srv/dopabite/releases/20260922171200`.
+- Active web release: `/srv/dopabite/releases/20260923022901` (Git `4afd4b5`); API remains on `/srv/dopabite-api/releases/20260922171200`.
 - Active symlink: `/srv/dopabite/current`.
 - Active API release: `/srv/dopabite-api/releases/20260922171200`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
-- Verified deployment snapshots are also copied off-host to `D:\anti\backups\dopabite`; the latest off-host copy is `dopabite-20260922T091556Z.sqlite3`. Automated COS replication is not configured yet.
+- Verified deployment snapshots are also copied off-host to `D:\anti\backups\dopabite`; the latest off-host copy is `dopabite-20260923T022803Z.sqlite3`. Automated COS replication is not configured yet.
 - Nginx site: `/etc/nginx/sites-available/food-archein-site`.
 - TLS: Let's Encrypt certificate for `food.archein.site`, valid through 2026-12-20 with Certbot automatic renewal enabled.
 - The host has one 40 GB ext4 root filesystem and no separate data disk. On 2026-09-23 it used 26% of bytes and 9% of inodes. `/srv` is the established release location for this host.
@@ -46,7 +46,8 @@ Last verified: 2026-09-23
 
 - `npm run lint`: passed.
 - `npm run build`: passed.
-- The 2026-09-23 local search change passed lint and production build. A live AMap browser check for “紫金港” found no nearby match, then returned 50 distant dining POIs including Hangzhou locations after “搜索全部地点”; the page displayed their distance from the current exploration point. Narrow-screen CSS and touch behavior still need real-device QA before production release.
+- The 2026-09-23 search change passed lint and production build. A live AMap browser check for “紫金港” found no nearby match, then returned 50 distant dining POIs including Hangzhou locations after “搜索全部地点”; the page displayed their distance from the current exploration point.
+- Web release `20260923022901` deployed the search and mobile-navigation changes from Git `4afd4b5`. Local `npm ci`, lint, and build passed. Production HTTPS returned 200 with the expected JS/CSS (`index-B6LSmv-K.js`, `index-t18AGSQe.css`), the public browser loaded 40 live AMap POIs, and `/api/health`, `/api/config`, and `/api/rankings` passed. Nginx and service checks passed; the API release was unchanged. Backup `dopabite-20260923T022803Z.sqlite3` passed SHA-256 and SQLite integrity checks after copying off-host. Post-deploy disk use is 26% of bytes and 9% of inodes. Physical-phone interaction QA is pending.
 - `npm audit --omit=dev --audit-level=high`: zero known vulnerabilities.
 - Two independent local API sessions submitted ratings for the same POI and both appeared in the public result; each account saw one owned rating and only its own saved locations. Re-rating performed an update, and an empty local import preserved existing cloud favorites.
 - End-to-end account QA created an anonymous user, public nickname, rating, and saved location; a second session saw the public author and note; email OTP linking preserved all data; and a later fresh email login recovered the same nickname, rating, and favorite. Rating conflicts use the most recently updated record.
@@ -71,8 +72,8 @@ Last verified: 2026-09-23
 ## Known limitations and blockers
 
 - The AMap result set can still contain adjacent non-food POIs such as tourism or beauty listings. Tightening the source filtering is the next data-quality fix.
-- The production JavaScript bundle is about 644 kB minified and still triggers Vite's chunk-size warning.
-- The all-location AMap keyword search displays the first page of at most 50 matching dining POIs; broad keywords may need a more specific city or shop name. The mobile interaction changes are currently only local and have not been verified on a physical phone.
+- The production JavaScript bundle is about 647 kB minified and still triggers Vite's chunk-size warning.
+- The all-location AMap keyword search displays the first page of at most 50 matching dining POIs; broad keywords may need a more specific city or shop name. The mobile interaction changes are live but have not yet been verified on a physical phone.
 - The early-stage community ranking currently returns all rated restaurant snapshots and fetches public rating details in bounded batches. Add server pagination or summary fields before the number of rated stores becomes large.
 - Ratings publish immediately with fixed-window write limiting; there is no moderation console, account deletion UI, or content-reporting flow yet.
 - Passwordless email login and Tencent SES API delivery are enabled in production. A real-inbox code delivery and second-device account recovery test are still pending; if Tencent rejects or delays delivery, disable the provider values and return the UI to its safe pending state.

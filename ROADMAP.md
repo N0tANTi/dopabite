@@ -1,9 +1,9 @@
 # DopaBite roadmap
 
-## P1: verify and release discovery search and mobile navigation
+## P1: verify mobile discovery on a physical phone
 
-- Current: local code adds an all-location fallback search, restores the three main views on narrow screens, and makes mobile map touch interaction explicit. Lint, build, and a live desktop AMap cross-location query passed.
-- Next action: test a narrow-screen phone viewport and a physical phone for view switching, vertical scrolling over the map, map interaction toggle, cross-location result selection, and search reset; then prepare a production release using `docs/runbooks/deployment.md`.
+- Current: web release `20260923022901` is live with the all-location search, three narrow-screen views, and explicit mobile map touch mode. Build and production smoke checks passed.
+- Next action: test a physical phone for view switching, vertical scrolling over the map, map interaction toggle, cross-location result selection, and search reset; collect any device-specific issues for a follow-up fix.
 - Acceptance: all three views are usable on mobile, a swipe starting over the map scrolls the page until map interaction is enabled, a distant restaurant can be found and opened, and production health/assets pass the deployment checks.
 
 ## P0: durable database backups
@@ -37,6 +37,6 @@
 
 ## P1: performance pass
 
-- Split map, account, and detail code and reduce the initial JavaScript bundle below the current Vite warning threshold (currently about 644 kB minified).
+- Split map, account, and detail code and reduce the initial JavaScript bundle below the current Vite warning threshold (currently about 647 kB minified).
 - Add pagination or server-side ranking summaries before the community-rated restaurant set becomes large; the current early-stage endpoint returns every rated restaurant and the client fetches rating details in 50-POI batches.
 - Acceptance: `npm run build` completes without the >500 kB chunk warning, a large ranking does not require downloading every public review up front, and the production smoke test still passes.
