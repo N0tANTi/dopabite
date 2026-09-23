@@ -1942,16 +1942,18 @@ button {
   margin-top: 10px;
 }
 
-.rating-entry-images a {
+.rating-entry-images button {
   width: 74px;
   height: 74px;
+  padding: 0;
   overflow: hidden;
   border: 2px solid var(--line);
   border-radius: 12px;
   background: var(--surface-soft);
+  cursor: zoom-in;
 }
 
-.rating-entry-images a:focus-visible {
+.rating-entry-images button:focus-visible {
   outline: 3px solid var(--pink);
   outline-offset: 2px;
 }
@@ -1960,6 +1962,103 @@ button {
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+
+.review-photo-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  background: rgb(23 18 27 / 82%);
+  backdrop-filter: blur(7px);
+}
+
+.review-photo-dialog {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  z-index: 101;
+  display: grid;
+  gap: 14px;
+  width: min(980px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  padding: 16px;
+  border: 2px solid var(--line);
+  border-radius: 20px;
+  background: var(--surface);
+  box-shadow: 8px 8px 0 var(--yellow);
+  transform: translate(-50%, -50%);
+  outline: none;
+}
+
+.review-photo-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.review-photo-heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.review-photo-heading h2 {
+  margin: 0;
+  color: var(--ink);
+  font-size: 16px;
+}
+
+.review-photo-heading p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.review-photo-stage {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 0;
+}
+
+.review-photo-stage img {
+  display: block;
+  min-width: 0;
+  max-width: 100%;
+  max-height: calc(100dvh - 140px);
+  object-fit: contain;
+  border-radius: 10px;
+}
+
+.review-photo-nav {
+  flex: 0 0 42px;
+  display: grid;
+  place-items: center;
+  width: 42px;
+  height: 42px;
+  border: 2px solid var(--line);
+  border-radius: 50%;
+  background: var(--yellow);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.review-photo-nav:focus-visible {
+  outline: 3px solid var(--pink);
+  outline-offset: 3px;
+}
+
+@media (max-width: 680px) {
+  .review-photo-dialog {
+    padding: 12px;
+  }
+
+  .review-photo-nav {
+    flex-basis: 34px;
+    width: 34px;
+    height: 34px;
+  }
 }
 
 .rating-entry-actions {

@@ -1,6 +1,8 @@
 import * as Dialog from '@radix-ui/react-dialog'
 import {
   ArrowSquareOut,
+  CaretLeft,
+  CaretRight,
   Clock,
   ForkKnife,
   MapPin,
@@ -40,6 +42,18 @@ export function RestaurantDrawer({
   const [imageFailed, setImageFailed] = useState(false)
   const [showAllRatings, setShowAllRatings] = useState(false)
   const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null)
+  const [activePhoto, setActivePhoto] = useState<{
+    images: NonNullable<RatingEntry['images']>
+    index: number
+    author: string
+  } | null>(null)
+
+  function showAdjacentPhoto(direction: -1 | 1) {
+    setActivePhoto((current) => current && ({
+      ...current,
+      index: (current.index + direction + current.images.length) % current.images.length,
+    }))
+  }
 
   if (!restaurant) return null
 
@@ -48,7 +62,10 @@ export function RestaurantDrawer({
   const amapUrl = `https://uri.amap.com/marker?position=${restaurant.location.join(',')}&name=${encodeURIComponent(restaurant.name)}&callnative=0`
 
   return (
-    <Dialog.Root open={open} onOpenChange={onOpenChange}>
+    <Dialog.Root open={open} onOpenChange={(next) => {
+      if (!next) setActivePhoto(null)
+      onOpenChange(next)
+    }}>
       <Dialog.Portal>
         <Dialog.Overlay className="drawer-overlay" />
         <Dialog.Content className="restaurant-drawer" aria-describedby="drawer-description">
@@ -147,9 +164,18 @@ export function RestaurantDrawer({
                       {Boolean(rating.images?.length) && (
                         <div className="rating-entry-images" aria-label="评价图片">
                           {rating.images?.map((image, index) => (
-                            <a key={image.id} href={image.url} target="_blank" rel="noreferrer" aria-label={`查看第 ${index + 1} 张评价图片`}>
+                            <button
+                              key={image.id}
+                              type="button"
+                              aria-label={`查看${rating.authorLabel || '食客'}的第 ${index + 1} 张评价图片`}
+                              onClick={() => setActivePhoto({
+                                images: rating.images ?? [],
+                                index,
+                                author: rating.authorLabel || '食客',
+                              })}
+                            >
                               <img src={image.url} alt={`${rating.authorLabel || '食客'}的评价图片 ${index + 1}`} loading="lazy" />
-                            </a>
+                            </button>
                           ))}
                         </div>
                       )}
@@ -215,6 +241,50 @@ export function RestaurantDrawer({
               </button>
             </div>
           </div>
+
+          <Dialog.Root open={Boolean(activePhoto)} onOpenChange={(next) => { if (!next) setActivePhoto(null) }}>
+            <Dialog.Portal>
+              <Dialog.Overlay className="review-photo-overlay" />
+              <Dialog.Content
+                className="review-photo-dialog"
+                aria-describedby="review-photo-description"
+                onKeyDown={(event) => {
+                  if (event.key === 'ArrowLeft') showAdjacentPhoto(-1)
+                  if (event.key === 'ArrowRight') showAdjacentPhoto(1)
+                }}
+              >
+                <div className="review-photo-heading">
+                  <div>
+                    <Dialog.Title>{activePhoto?.author}的评价图片</Dialog.Title>
+                    <Dialog.Description id="review-photo-description">
+                      {activePhoto ? `${activePhoto.index + 1} / ${activePhoto.images.length}` : ''}
+                    </Dialog.Description>
+                  </div>
+                  <Dialog.Close type="button" className="icon-button" aria-label="关闭图片预览">
+                    <X size={22} weight="bold" />
+                  </Dialog.Close>
+                </div>
+                {activePhoto && (
+                  <div className="review-photo-stage">
+                    {activePhoto.images.length > 1 && (
+                      <button type="button" className="review-photo-nav" aria-label="上一张图片" onClick={() => showAdjacentPhoto(-1)}>
+                        <CaretLeft size={24} weight="bold" />
+                      </button>
+                    )}
+                    <img
+                      src={activePhoto.images[activePhoto.index].url}
+                      alt={`${activePhoto.author}的评价图片 ${activePhoto.index + 1}`}
+                    />
+                    {activePhoto.images.length > 1 && (
+                      <button type="button" className="review-photo-nav" aria-label="下一张图片" onClick={() => showAdjacentPhoto(1)}>
+                        <CaretRight size={24} weight="bold" />
+                      </button>
+                    )}
+                  </div>
+                )}
+              </Dialog.Content>
+            </Dialog.Portal>
+          </Dialog.Root>
         </Dialog.Content>
       </Dialog.Portal>
     </Dialog.Root>
