@@ -19,6 +19,7 @@ Last verified: 2026-09-23
 - The profile button opens a real account panel. Users can set a public nickname, explicitly merge browser ratings and private saved locations into the cloud, use passwordless email-code login when mail delivery is configured, optionally bind a Passkey on supported devices, and sign out. WeChat login is deferred.
 - Public rating cards show the author's nickname, date, composite score, three score dimensions, note, and ownership marker. Email addresses, authentication methods, internal IDs, and saved locations stay private.
 - A user can edit their own score and note with the existing values prefilled, or delete the rating after an inline confirmation. Other users' ratings remain read-only.
+- A rating can include up to three public photos. The form previews and removes photos, resizes selected images to JPEG without photo metadata, and keeps the form open if an image upload fails. Public rating cards display the photos; edits can retain or remove them, and deleting the rating deletes its photos. Image bytes are stored in a separate SQLite table, so the existing verified database snapshots include them.
 - Saved locations are private to the authenticated account. Live/current location history is not stored. `localStorage` remains an offline fallback and migration source.
 - The API uses SQLite WAL at `/srv/dopabite-data/dopabite.sqlite3`; code releases cannot overwrite it.
 
@@ -32,12 +33,12 @@ Last verified: 2026-09-23
 ## Production deployment
 
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
-- Active web release: `/srv/dopabite/releases/20260923022901` (Git `4afd4b5`); API remains on `/srv/dopabite-api/releases/20260922171200`.
+- Active web and API releases: `/srv/dopabite/releases/20260923084340` and `/srv/dopabite-api/releases/20260923084340` (Git `18dc11c`).
 - Active symlink: `/srv/dopabite/current`.
-- Active API release: `/srv/dopabite-api/releases/20260922171200`, linked from `/srv/dopabite-api/current`.
+- Active API release is linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
-- Verified deployment snapshots are also copied off-host to `D:\anti\backups\dopabite`; the latest off-host copy is `dopabite-20260923T022803Z.sqlite3`. Automated COS replication is not configured yet.
+- Verified deployment snapshots are also copied off-host to `D:\anti\backups\dopabite`; the latest off-host copy is `dopabite-20260923T084304Z.sqlite3`. Automated COS replication is not configured yet.
 - Nginx site: `/etc/nginx/sites-available/food-archein-site`.
 - TLS: Let's Encrypt certificate for `food.archein.site`, valid through 2026-12-20 with Certbot automatic renewal enabled.
 - The host has one 40 GB ext4 root filesystem and no separate data disk. On 2026-09-23 it used 26% of bytes and 9% of inodes. `/srv` is the established release location for this host.
@@ -46,6 +47,8 @@ Last verified: 2026-09-23
 
 - `npm run lint`: passed.
 - `npm run build`: passed.
+- The image-upload change passed `npm ci`, lint, build, and the isolated API integration test for public image reads, owner-only image references, edit/retain/remove, invalid file rejection, JSON edit preservation, and deletion. The production API was started against a copy of the pre-deploy snapshot before promotion.
+- Web/API release `20260923084340` is live. HTTPS and the expected JS/CSS returned 200; the API health, ratings, rankings, and config endpoints passed; a 100 KB unauthenticated upload reached the API and returned 401 rather than Nginx's former 413. The missing-image endpoint returned 404. Nginx syntax and service checks passed. The pre-deploy snapshot `dopabite-20260923T084304Z.sqlite3` passed SHA-256 and SQLite integrity checks and its off-host copy matched SHA-256 `fe2d205f30563fa0b3c43dc8e94a917cf28872023459be190a29dc094157c9a2`. Post-release storage is 26% of bytes and 9% of inodes. A real phone photo upload on production remains to be verified.
 - The 2026-09-23 search change passed lint and production build. A live AMap browser check for “紫金港” found no nearby match, then returned 50 distant dining POIs including Hangzhou locations after “搜索全部地点”; the page displayed their distance from the current exploration point.
 - Web release `20260923022901` deployed the search and mobile-navigation changes from Git `4afd4b5`. Local `npm ci`, lint, and build passed. Production HTTPS returned 200 with the expected JS/CSS (`index-B6LSmv-K.js`, `index-t18AGSQe.css`), the public browser loaded 40 live AMap POIs, and `/api/health`, `/api/config`, and `/api/rankings` passed. Nginx and service checks passed; the API release was unchanged. Backup `dopabite-20260923T022803Z.sqlite3` passed SHA-256 and SQLite integrity checks after copying off-host. Post-deploy disk use is 26% of bytes and 9% of inodes. Physical-phone interaction QA is pending.
 - `npm audit --omit=dev --audit-level=high`: zero known vulnerabilities.
@@ -76,6 +79,7 @@ Last verified: 2026-09-23
 - The all-location AMap keyword search displays the first page of at most 50 matching dining POIs; broad keywords may need a more specific city or shop name. The mobile interaction changes are live but have not yet been verified on a physical phone.
 - The early-stage community ranking currently returns all rated restaurant snapshots and fetches public rating details in bounded batches. Add server pagination or summary fields before the number of rated stores becomes large.
 - Ratings publish immediately with fixed-window write limiting; there is no moderation console, account deletion UI, or content-reporting flow yet.
+- Review photos also publish immediately; image reporting and moderation are still pending. The browser resizes supported phone photos, but HEIC decoding and album selection still need real-device verification.
 - Passwordless email login and Tencent SES API delivery are enabled in production. A real-inbox code delivery and second-device account recovery test are still pending; if Tencent rejects or delays delivery, disable the provider values and return the UI to its safe pending state.
 - Daily server-local backups are active and the first snapshot has an off-host copy, but continuous off-host COS replication still needs credentials and a restore drill.
 - Production Passkey enrollment was not completed during automated QA because that would create a persistent credential; it remains an optional path and still needs one manual real-device enrollment test.

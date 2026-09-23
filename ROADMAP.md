@@ -6,6 +6,12 @@
 - Next action: test a physical phone for view switching, vertical scrolling over the map, map interaction toggle, cross-location result selection, and search reset; collect any device-specific issues for a follow-up fix.
 - Acceptance: all three views are usable on mobile, a swipe starting over the map scrolls the page until map interaction is enabled, a distant restaurant can be found and opened, and production health/assets pass the deployment checks.
 
+## P1: verify review photos on a physical phone
+
+- Current: up to three images can be attached, previewed, kept, removed, and displayed in public rating cards. Local upload lifecycle tests and production smoke checks passed.
+- Next action: on the live site, choose camera and album photos on iOS/Android, publish a review, reopen and edit it, then remove a photo; check HEIC conversion, orientation, upload error feedback, and mobile scrolling within the dialog.
+- Acceptance: the published images remain visible after refresh and on another device; edits and deletion remove only the intended images; no photo is silently lost when an upload fails.
+
 ## P0: durable database backups
 
 - Current: `/srv/dopabite-data/` is persistent, daily verified SQLite snapshots retain seven copies, and the first production snapshot has a checksum-verified operator-machine copy.
@@ -16,7 +22,7 @@
 ## P1: account and moderation controls
 
 - Public nicknames, detailed community-rating cards, and user edit/delete controls for their own rating are implemented.
-- Next action: add account deletion, content reporting, moderation queue, and an operator review surface.
+- Next action: add account deletion, reporting for public notes and photos, a moderation queue, and an operator review surface.
 - Acceptance: users can remove their content and account, and reported public notes can be reviewed without direct database edits.
 
 ## P0: production email delivery

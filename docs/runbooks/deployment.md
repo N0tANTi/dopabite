@@ -11,6 +11,7 @@
 - API release root: `/srv/dopabite-api/releases/`
 - API active symlink: `/srv/dopabite-api/current`
 - Persistent database: `/srv/dopabite-data/dopabite.sqlite3`
+- Rating images: `rating_images` BLOB table in the persistent SQLite database; included in the database snapshot and off-host copy, with no separate upload directory.
 - Local snapshots: `/srv/dopabite-data/backups/`
 - API environment: `/etc/dopabite/api.env` (root-owned, never committed)
 
@@ -39,6 +40,8 @@ Install `deploy/systemd/dopabite-api.service` and the backup service/timer under
 
 Install the checked-in Nginx template as `/etc/nginx/sites-available/food-archein-site`, validate with `sudo nginx -t`, and reload Nginx. TLS is managed by Certbot; verify renewal status instead of replacing certificate files manually.
 
+Rating uploads accept at most three JPEG/PNG/WebP files of 2 MB each. The browser scales and converts selected images to JPEG; the API checks file signatures and ownership before changing a rating. The HTTPS Nginx template allows an 8 MB request body. After changing the Nginx site config, test and reload it before testing uploads. A request larger than the former 64 KB limit should reach the API; an unauthenticated request should return 401, not 413. Verify a real image submission with an operator-owned test rating before declaring the phone flow fully validated; remove the test content afterward.
+
 ## Enabling email-code login
 
 Email login is feature-detected at API startup. Tencent Cloud SES API is the preferred production provider. Add `TENCENTCLOUD_SECRET_ID`, `TENCENTCLOUD_SECRET_KEY`, `TENCENT_SES_REGION`, `TENCENT_SES_FROM`, and `TENCENT_SES_TEMPLATE_ID` to the root-owned `/etc/dopabite/api.env`. The CAM key must belong to a programmatic-only sub-user limited to `ses:SendEmail`. The HTML template is checked in at `deploy/email-templates/dopabite-login-code.html` and uses the single variable `{{code}}`.
@@ -65,5 +68,7 @@ Keep the active release plus the two most recent verified rollback releases. Do 
 To roll back the web app, atomically point `/srv/dopabite/current.next` at the selected verified release, move it over `/srv/dopabite/current`, run `sudo nginx -t`, reload Nginx, and repeat the health checks. Roll back the API independently by switching `/srv/dopabite-api/current.next`, restarting `dopabite-api`, and rechecking `/api/health`.
 
 Database migrations are additive. Before a migration, create and verify a snapshot. A code rollback does not automatically restore or delete database data. Local snapshots retain the seven newest verified copies; an off-host COS target is still required for disaster recovery and must never share credentials through Git.
+
+The `rating_images` table is additive, so older API releases can run after rollback while leaving photo data intact. Older clients cannot display or edit photos; do not restore an older database snapshot just to roll back code. The next verified SQLite snapshot must include image bytes after the first real upload.
 
 Until COS replication is configured, copy the newest `.sqlite3` snapshot and its `.sha256` sidecar to the operator backup directory outside this Git repository, then compare the SHA-256 digest locally. This manual copy is only a stopgap; it does not replace scheduled off-host replication. Never copy the live WAL database files directly.
