@@ -133,6 +133,10 @@ type AMapMarkerRenderContext = {
 }
 
 type AMapPlaceSearch = {
+  search: (
+    keyword: string,
+    callback: (status: string, result: AMapSearchResult | string) => void,
+  ) => void
   searchNearBy: (
     keyword: string,
     center: [number, number],
@@ -193,6 +197,8 @@ type AmapCanvasProps = {
   locationRequest: LocationRequest | null
   isCurrentLocationSaved: boolean
   onToggleFavorite: (location: LocationInfo) => void
+  globalSearchRequest: { token: number; keyword: string } | null
+  onGlobalSearchResult: (restaurants: Restaurant[] | null) => void
 }
 
 const fallbackPositions = [
@@ -352,6 +358,8 @@ export function AmapCanvas({
   locationRequest,
   isCurrentLocationSaved,
   onToggleFavorite,
+  globalSearchRequest,
+  onGlobalSearchResult,
 }: AmapCanvasProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const mapRef = useRef<AMapMap | null>(null)
@@ -380,6 +388,63 @@ export function AmapCanvas({
   const [addressQuery, setAddressQuery] = useState('')
   const [addressError, setAddressError] = useState('')
   const [isAddressSearching, setIsAddressSearching] = useState(false)
+  const [mapInteractionEnabled, setMapInteractionEnabled] = useState(false)
+
+  useEffect(() => {
+    if (!globalSearchRequest) {
+      const currentCenter = activeSearchRef.current?.center
+      if (currentCenter) mapRef.current?.setZoomAndCenter(16, currentCenter)
+      return
+    }
+    const amap = amapRef.current
+    if (!amap) {
+      onGlobalSearchResult(null)
+      return
+    }
+    let cancelled = false
+    const service = new amap.PlaceSearch({
+      pageSize: 50,
+      pageIndex: 1,
+      city: '全国',
+      citylimit: false,
+      type: '050000',
+      extensions: 'all',
+    })
+    service.search(globalSearchRequest.keyword, (status, result) => {
+      if (cancelled) return
+      if (status === 'no_data') {
+        setMessage('全部地点也没有找到餐饮店')
+        onGlobalSearchResult([])
+        return
+      }
+      if (status !== 'complete' || typeof result === 'string') {
+        setMessage('全部地点搜索暂时失败')
+        onGlobalSearchResult(null)
+        return
+      }
+      const found = (result.poiList?.pois ?? []).flatMap((poi): Restaurant[] => {
+        const point = getCoordinates(poi.location)
+        if (!poi.id || !poi.name || !point || !isDiningPoi(poi)) return []
+        return [{
+          id: poi.id,
+          name: poi.name,
+          location: point,
+          address: normalizeAddress(poi.address),
+          businessArea: '全部地点搜索',
+          category: poi.type?.split(';').at(-1) ?? '餐饮服务',
+          image: getPhotoUrl(poi.photos),
+          amapRating: getPoiNumber(poi, 'rating'),
+          averageCost: getPoiNumber(poi, 'cost'),
+          source: 'amap-live',
+        }]
+      })
+      const unique = Array.from(new Map(found.map((item) => [item.id, item])).values())
+      if (unique.length) mapRef.current?.setZoomAndCenter(13, unique[0].location)
+      setMessage(unique.length ? `全部地点找到 ${unique.length} 家餐饮店` : '全部地点也没有找到餐饮店')
+      onGlobalSearchResult(unique)
+    })
+    return () => { cancelled = true }
+  }, [globalSearchRequest, onGlobalSearchResult])
 
   useEffect(() => {
     resultLimitRef.current = resultLimit
@@ -569,6 +634,7 @@ export function AmapCanvas({
       activeSearchRef.current = { amap, center, location: located }
       mapRef.current?.setZoomAndCenter(16, center)
       setLocationPoint(center)
+      setMapInteractionEnabled(false)
       publishLocation(located)
       describeLocation(amap, center, located, syncAddressQuery)
       searchNearby(amap, center, located)
@@ -850,7 +916,7 @@ export function AmapCanvas({
   const isDemo = mode === 'demo' || mode === 'error'
 
   return (
-    <section className="map-shell" aria-label="附近餐厅地图">
+    <section className={`map-shell ${mapInteractionEnabled ? 'is-interactive' : ''}`} aria-label="附近餐厅地图">
       <div ref={containerRef} className={`amap-stage ${isDemo ? 'is-demo' : ''}`}>
         {isDemo && <img src="/assets/demo-map.png" alt="静安寺地图演示底图" className="demo-map-image" />}
         {isDemo && (
@@ -878,6 +944,15 @@ export function AmapCanvas({
           </div>
         )}
       </div>
+
+      <button
+        type="button"
+        className="map-touch-toggle"
+        onClick={() => setMapInteractionEnabled((current) => !current)}
+        aria-pressed={mapInteractionEnabled}
+      >
+        {mapInteractionEnabled ? '完成地图操作' : '操作地图'}
+      </button>
 
       <div className={`map-status ${mode}`} role="status">
         {mode === 'error' ? <WarningCircle size={18} weight="fill" /> : <MapPinArea size={18} weight="fill" />}
@@ -935,6 +1010,7 @@ export function AmapCanvas({
           const next = !isPickingRef.current
           isPickingRef.current = next
           setIsPicking(next)
+          if (next) setMapInteractionEnabled(true)
           setMessage(next ? '请在地图上点击你的实际位置' : '已取消地图选点')
         }}
         aria-pressed={isPicking}

@@ -1,5 +1,11 @@
 # DopaBite roadmap
 
+## P1: verify and release discovery search and mobile navigation
+
+- Current: local code adds an all-location fallback search, restores the three main views on narrow screens, and makes mobile map touch interaction explicit. Lint, build, and a live desktop AMap cross-location query passed.
+- Next action: test a narrow-screen phone viewport and a physical phone for view switching, vertical scrolling over the map, map interaction toggle, cross-location result selection, and search reset; then prepare a production release using `docs/runbooks/deployment.md`.
+- Acceptance: all three views are usable on mobile, a swipe starting over the map scrolls the page until map interaction is enabled, a distant restaurant can be found and opened, and production health/assets pass the deployment checks.
+
 ## P0: durable database backups
 
 - Current: `/srv/dopabite-data/` is persistent, daily verified SQLite snapshots retain seven copies, and the first production snapshot has a checksum-verified operator-machine copy.

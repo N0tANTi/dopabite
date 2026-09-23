@@ -194,6 +194,9 @@ function App() {
   const [ratingOpen, setRatingOpen] = useState(false)
   const [accountOpen, setAccountOpen] = useState(false)
   const [query, setQuery] = useState('')
+  const [globalRestaurants, setGlobalRestaurants] = useState<Restaurant[]>([])
+  const [globalSearchRequest, setGlobalSearchRequest] = useState<{ token: number; keyword: string } | null>(null)
+  const [globalSearchState, setGlobalSearchState] = useState<'idle' | 'loading' | 'results' | 'error'>('idle')
   const [category, setCategory] = useState('全部')
   const [sortMode, setSortMode] = useState<SortMode>('distance')
   const [sortMenuOpen, setSortMenuOpen] = useState(false)
@@ -217,6 +220,18 @@ function App() {
   const localRatingsRef = useRef(localRatings)
   const restaurantsRef = useRef(restaurants)
   const cloudSyncEnabledRef = useRef(cloudSyncEnabled)
+  const globalSearchTokenRef = useRef(0)
+
+  const resetGlobalSearch = useCallback(() => {
+    setGlobalSearchRequest(null)
+    setGlobalSearchState('idle')
+    setGlobalRestaurants([])
+  }, [])
+
+  const handleGlobalSearchResult = useCallback((found: Restaurant[] | null) => {
+    setGlobalRestaurants(found ?? [])
+    setGlobalSearchState(found === null ? 'error' : 'results')
+  }, [])
 
   const ratings = useMemo(() => {
     const merged: RatingStore = {}
@@ -524,7 +539,7 @@ function App() {
     ? allRatedRestaurants
     : viewMode === 'ranking'
       ? rankedRestaurants
-      : restaurants
+      : globalSearchState === 'results' ? globalRestaurants : restaurants
 
   const categories = useMemo(
     () => ['全部', ...Array.from(new Set(sourceRestaurants.map((restaurant) => restaurant.category))).slice(0, 5)],
@@ -535,6 +550,7 @@ function App() {
     const normalizedQuery = query.trim().toLowerCase()
     const filtered = sourceRestaurants.filter((restaurant) => {
       const matchesQuery =
+        (viewMode === 'nearby' && globalSearchState === 'results') ||
         !normalizedQuery ||
         restaurant.name.toLowerCase().includes(normalizedQuery) ||
         restaurant.address.toLowerCase().includes(normalizedQuery) ||
@@ -563,7 +579,7 @@ function App() {
       }
       return distanceInMeters(center, a.location) - distanceInMeters(center, b.location)
     })
-  }, [category, center, query, rankingScope, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
+  }, [category, center, globalSearchState, query, rankingScope, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
 
   const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
     const localRating: RatingEntry = {
@@ -710,6 +726,7 @@ function App() {
             onClick={() => {
               setViewMode('nearby')
               setCategory('全部')
+              resetGlobalSearch()
             }}
             aria-pressed={viewMode === 'nearby'}
           >
@@ -721,6 +738,7 @@ function App() {
             onClick={() => {
               setViewMode('ranking')
               setCategory('全部')
+              resetGlobalSearch()
             }}
             aria-pressed={viewMode === 'ranking'}
           >
@@ -732,6 +750,7 @@ function App() {
             onClick={() => {
               setViewMode('rated')
               setCategory('全部')
+              resetGlobalSearch()
             }}
             aria-pressed={viewMode === 'rated'}
           >
@@ -860,14 +879,14 @@ function App() {
                   ? allRatedRestaurants.length
                   : viewMode === 'ranking'
                     ? rankingScopeCount
-                    : restaurants.length}
+                    : globalSearchState === 'results' ? globalRestaurants.length : restaurants.length}
               </strong>
               <span>
                 {viewMode === 'rated'
                   ? '家已评分店铺'
                   : viewMode === 'ranking'
                     ? rankingScope === 'nearby' ? '家附近上榜' : '家社区上榜'
-                    : '家附近店铺'}
+                    : globalSearchState === 'results' ? '家全部地点结果' : '家附近店铺'}
               </span>
             </div>
           </div>
@@ -884,6 +903,8 @@ function App() {
             locationRequest={locationRequest}
             isCurrentLocationSaved={Boolean(savedCurrentLocation)}
             onToggleFavorite={toggleFavoriteLocation}
+            globalSearchRequest={globalSearchRequest}
+            onGlobalSearchResult={handleGlobalSearchResult}
           />
         </div>
 
@@ -911,7 +932,13 @@ function App() {
                         : rankingScope === 'nearby'
                           ? `${visibleRestaurants.length} 家上榜，当前地点 2 公里内共 ${nearbyRankedCount} 家`
                           : `${visibleRestaurants.length} 家上榜，包含所有地点`
-                  : `${visibleRestaurants.length} 个结果，店铺数据来自高德`}
+                  : globalSearchState === 'loading'
+                    ? '正在搜索全部地点的高德餐饮店'
+                    : globalSearchState === 'error'
+                      ? '全部地点搜索失败，请重试'
+                      : globalSearchState === 'results'
+                        ? `${visibleRestaurants.length} 个全部地点搜索结果，数据来自高德`
+                        : `${visibleRestaurants.length} 个附近结果，店铺数据来自高德`}
               </p>
             </div>
             {viewMode === 'rated' || viewMode === 'ranking' ? (
@@ -949,6 +976,8 @@ function App() {
                   {viewMode === 'ranking' ? `全部 ${rankedRestaurants.length}` : `附近 ${nearbyRatedCount}`}
                 </button>
               </div>
+            ) : globalSearchState === 'results' ? (
+              <span className="global-search-limit">最多显示 50 家</span>
             ) : (
               <form
                 className="result-limit-control"
@@ -978,15 +1007,47 @@ function App() {
             <MagnifyingGlass size={20} weight="bold" aria-hidden="true" />
             <input
               value={query}
-              onChange={(event) => setQuery(event.target.value)}
+              onChange={(event) => {
+                setQuery(event.target.value)
+                resetGlobalSearch()
+              }}
               placeholder="搜店名、地址或品类"
             />
             {query && (
-              <button type="button" onClick={() => setQuery('')} aria-label="清空搜索">
+              <button type="button" onClick={() => { setQuery(''); resetGlobalSearch() }} aria-label="清空搜索">
                 <X size={16} weight="bold" />
               </button>
             )}
           </label>
+
+          {viewMode === 'nearby' && query.trim() && visibleRestaurants.length === 0 && (
+            <div className="global-search-action" role="status">
+              <span>
+                {globalSearchState === 'loading' ? '正在搜索全部地点…'
+                  : globalSearchState === 'results' ? '全部地点也没有找到餐饮店，试试补充城市或店名。'
+                    : globalSearchState === 'error' ? '搜索暂时失败，可以重试。'
+                      : '附近没有匹配的店，去全部地点找找。'}
+              </span>
+              {globalSearchState !== 'loading' && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCategory('全部')
+                    setGlobalSearchState('loading')
+                    setGlobalSearchRequest({ token: ++globalSearchTokenRef.current, keyword: query.trim() })
+                  }}
+                >
+                  {globalSearchState === 'idle' ? '搜索全部地点' : '重新搜索'}
+                </button>
+              )}
+            </div>
+          )}
+          {viewMode === 'nearby' && globalSearchState === 'results' && visibleRestaurants.length > 0 && (
+            <div className="global-search-action" role="status">
+              <span>正在显示全部地点的餐饮店</span>
+              <button type="button" onClick={resetGlobalSearch}>返回附近结果</button>
+            </div>
+          )}
 
           <div className="filter-row">
             <div className="category-chips" aria-label="按菜系筛选">
@@ -1135,6 +1196,7 @@ function App() {
                   className="secondary-button"
                   onClick={() => {
                     setQuery('')
+                    resetGlobalSearch()
                     setCategory('全部')
                     if (viewMode === 'ranking' && rankingError && !rankedRestaurants.length) {
                       setRankingLoading(true)
