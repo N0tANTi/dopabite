@@ -10,6 +10,7 @@
     "start:api": "node dist-server/index.js",
     "backup:database": "node dist-server/backup.js",
     "lint": "oxlint",
+    "test:rating-images": "node --test tests/rating-images.test.mjs",
     "preview": "vite preview"
   },
   "dependencies": {

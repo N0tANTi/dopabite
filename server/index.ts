@@ -55,6 +55,33 @@ type RatingRow = {
   authorName: string
 }
 
+type RatingImageRow = { id: string; ratingId: string }
+
+const MAX_RATING_IMAGES = 3
+const MAX_IMAGE_BYTES = 2 * 1024 * 1024
+
+function imageMime(bytes: Uint8Array) {
+  if (bytes.length >= 3 && bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff) return 'image/jpeg'
+  if (bytes.length >= 8 && [137, 80, 78, 71, 13, 10, 26, 10].every((byte, index) => bytes[index] === byte)) return 'image/png'
+  if (bytes.length >= 12 && String.fromCharCode(...bytes.slice(0, 4)) === 'RIFF' && String.fromCharCode(...bytes.slice(8, 12)) === 'WEBP') return 'image/webp'
+  return null
+}
+
+async function parseRatingImages(files: (string | File)[]) {
+  if (files.length > MAX_RATING_IMAGES) throw jsonError('每条评价最多上传 3 张图片')
+  const parsed: { id: string; mime: string; bytes: Uint8Array }[] = []
+  for (const file of files) {
+    if (!(file instanceof File) || !file.size || file.size > MAX_IMAGE_BYTES) {
+      throw jsonError('每张图片须小于 2 MB')
+    }
+    const bytes = new Uint8Array(await file.arrayBuffer())
+    const mime = imageMime(bytes)
+    if (!mime || mime !== file.type) throw jsonError('仅支持 JPEG、PNG 或 WebP 图片')
+    parsed.push({ id: crypto.randomUUID(), mime, bytes })
+  }
+  return parsed
+}
+
 type LocationRow = {
   id: string
   label: string
@@ -244,13 +271,14 @@ function upsertRating(userId: string, poiId: string, rating: RatingInput) {
   )
 }
 
-function toPublicRating(row: RatingRow, currentUserId?: string) {
+function toPublicRating(row: RatingRow, images: RatingImageRow[], currentUserId?: string) {
   return {
     id: row.id,
     taste: row.taste,
     value: row.value,
     returnIntent: row.returnIntent,
     note: row.note,
+    images: images.map((image) => ({ id: image.id, url: `/api/rating-images/${image.id}` })),
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
     authorLabel: getPublicNickname(row.authorName, row.userId),
@@ -280,9 +308,23 @@ function listRatings(poiIds: string[], currentUserId?: string) {
     ORDER BY r.updated_at DESC
   `).all(...poiIds) as unknown as RatingRow[]
 
+  const imagesByRating = new Map<string, RatingImageRow[]>()
+  if (rows.length) {
+    const imageRows = database.prepare(`
+      SELECT id, rating_id AS ratingId FROM rating_images
+      WHERE rating_id IN (${rows.map(() => '?').join(', ')})
+      ORDER BY position
+    `).all(...rows.map((row) => row.id)) as unknown as RatingImageRow[]
+    for (const image of imageRows) {
+      const entries = imagesByRating.get(image.ratingId) ?? []
+      entries.push(image)
+      imagesByRating.set(image.ratingId, entries)
+    }
+  }
+
   const grouped: Record<string, ReturnType<typeof toPublicRating>[]> = {}
   for (const poiId of poiIds) grouped[poiId] = []
-  for (const row of rows) grouped[row.poiId]?.push(toPublicRating(row, currentUserId))
+  for (const row of rows) grouped[row.poiId]?.push(toPublicRating(row, imagesByRating.get(row.id) ?? [], currentUserId))
   return grouped
 }
 
@@ -470,15 +512,95 @@ app.get('/api/ratings', async (c) => {
   return c.json({ ratings: listRatings(poiIds, session?.user.id) })
 })
 
+app.get('/api/rating-images/:imageId', (c) => {
+  const imageId = c.req.param('imageId')
+  if (!/^[a-f0-9-]{36}$/.test(imageId)) throw jsonError('图片不存在', 404)
+  const image = database.prepare(`
+    SELECT i.mime_type AS mime, i.image_data AS bytes
+    FROM rating_images i
+    JOIN ratings r ON r.id = i.rating_id
+    WHERE i.id = ? AND r.status = 'published'
+  `).get(imageId) as { mime: string; bytes: Uint8Array } | undefined
+  if (!image) throw jsonError('图片不存在', 404)
+  return new Response(new Uint8Array(image.bytes), {
+    headers: {
+      'Content-Type': image.mime,
+      'Cache-Control': 'public, max-age=300',
+      'X-Content-Type-Options': 'nosniff',
+    },
+  })
+})
+
 app.put('/api/restaurants/:poiId/my-rating', async (c) => {
   const poiId = c.req.param('poiId').slice(0, 120)
-  const body = await c.req.json<Record<string, unknown>>().catch(() => null)
-  if (!body) throw jsonError('请求内容不是有效的 JSON')
+  const multipart = c.req.header('content-type')?.startsWith('multipart/form-data') ?? false
+  let body: Record<string, unknown> | null = null
+  let keepImageIds: string[] | null = null
+  let newImages: Awaited<ReturnType<typeof parseRatingImages>> = []
+  if (multipart) {
+    const length = Number(c.req.header('content-length') ?? 0)
+    if (length > 8 * 1024 * 1024) throw jsonError('上传内容超过 8 MB')
+    const form = await c.req.raw.formData().catch(() => null)
+    if (!form) throw jsonError('上传内容无效')
+    try {
+      body = {
+        restaurant: JSON.parse(String(form.get('restaurant'))),
+        rating: JSON.parse(String(form.get('rating'))),
+      }
+      keepImageIds = JSON.parse(String(form.get('keepImageIds')))
+    } catch {
+      throw jsonError('上传内容无效')
+    }
+    if (!Array.isArray(keepImageIds) || !keepImageIds.every((id) => typeof id === 'string')) {
+      throw jsonError('图片列表无效')
+    }
+    newImages = await parseRatingImages(form.getAll('images'))
+  } else {
+    body = await c.req.json<Record<string, unknown>>().catch(() => null)
+  }
+  if (!body) throw jsonError('请求内容无效')
   const restaurant = parseRestaurant(body.restaurant, poiId)
   const rating = parseRating(body.rating)
   const userId = c.get('session').user.id
-  upsertRestaurant(restaurant)
-  upsertRating(userId, poiId, rating)
+  const existing = database.prepare('SELECT id FROM ratings WHERE user_id = ? AND amap_poi_id = ?')
+    .get(userId, poiId) as { id: string } | undefined
+  const existingIds = existing
+    ? (database.prepare('SELECT id FROM rating_images WHERE rating_id = ?').all(existing.id) as { id: string }[])
+      .map((image) => image.id)
+    : []
+  if (keepImageIds && (
+    new Set(keepImageIds).size !== keepImageIds.length ||
+    keepImageIds.some((id) => !existingIds.includes(id)) ||
+    keepImageIds.length + newImages.length > MAX_RATING_IMAGES
+  )) throw jsonError('图片列表无效或超过 3 张')
+
+  database.exec('SAVEPOINT save_rating_with_images')
+  try {
+    upsertRestaurant(restaurant)
+    upsertRating(userId, poiId, rating)
+    if (keepImageIds) {
+      const ratingId = existing?.id ?? (database.prepare('SELECT id FROM ratings WHERE user_id = ? AND amap_poi_id = ?')
+        .get(userId, poiId) as { id: string }).id
+      const deleteImage = database.prepare('DELETE FROM rating_images WHERE id = ? AND rating_id = ?')
+      for (const id of existingIds) {
+        if (!keepImageIds.includes(id)) deleteImage.run(id, ratingId)
+      }
+      const setPosition = database.prepare('UPDATE rating_images SET position = ? WHERE id = ? AND rating_id = ?')
+      keepImageIds.forEach((id, index) => setPosition.run(index, id, ratingId))
+      const insertImage = database.prepare(`
+        INSERT INTO rating_images (id, rating_id, mime_type, image_data, position, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `)
+      newImages.forEach((image, index) => {
+        insertImage.run(image.id, ratingId, image.mime, image.bytes, keepImageIds.length + index, new Date().toISOString())
+      })
+    }
+    database.exec('RELEASE SAVEPOINT save_rating_with_images')
+  } catch (error) {
+    database.exec('ROLLBACK TO SAVEPOINT save_rating_with_images')
+    database.exec('RELEASE SAVEPOINT save_rating_with_images')
+    throw error
+  }
   return c.json({ rating: listRatings([poiId], userId)[poiId]?.find((entry) => entry.isMine) }, 200)
 })
 

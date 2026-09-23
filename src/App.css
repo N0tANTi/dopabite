@@ -1936,6 +1936,32 @@ button {
   line-height: 1.55;
 }
 
+.rating-entry-images {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.rating-entry-images a {
+  width: 74px;
+  height: 74px;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface-soft);
+}
+
+.rating-entry-images a:focus-visible {
+  outline: 3px solid var(--pink);
+  outline-offset: 2px;
+}
+
+.rating-entry-images img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
 .rating-entry-actions {
   display: flex;
   align-items: center;
@@ -2355,6 +2381,80 @@ button {
 @keyframes fade-out {
   from { opacity: 1; }
   to { opacity: 0; }
+}
+
+.rating-image-field {
+  display: grid;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.rating-image-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rating-image-heading > span {
+  font-size: 13px;
+  font-weight: 850;
+}
+
+.rating-image-heading small,
+.rating-image-field > small {
+  color: var(--muted);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.rating-image-heading .secondary-button {
+  padding: 8px 12px;
+  font-size: 12px;
+}
+
+.rating-image-previews {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.rating-image-preview {
+  position: relative;
+  width: 88px;
+  height: 88px;
+  overflow: hidden;
+  border: 2px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface-soft);
+}
+
+.rating-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rating-image-preview button {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border: 1px solid var(--line);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.rating-image-error {
+  margin: 0;
+  color: var(--pink-dark);
+  font-size: 12px;
+  font-weight: 800;
 }
 
 .account-dialog {

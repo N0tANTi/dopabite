@@ -75,14 +75,29 @@ export async function fetchRankedRestaurants() {
   return response.restaurants
 }
 
-export async function saveMyRating(restaurant: Restaurant, rating: RatingEntry) {
-  const response = await requestJson<{ rating: RatingEntry }>(
-    `/api/restaurants/${encodeURIComponent(restaurant.id)}/my-rating`,
-    {
+export async function saveMyRating(
+  restaurant: Restaurant,
+  rating: RatingEntry,
+  imageUpdate?: { files: File[]; keepImageIds: string[] },
+) {
+  const url = `/api/restaurants/${encodeURIComponent(restaurant.id)}/my-rating`
+  let response: { rating: RatingEntry }
+  if (imageUpdate) {
+    const form = new FormData()
+    form.set('restaurant', JSON.stringify(restaurant))
+    form.set('rating', JSON.stringify(rating))
+    form.set('keepImageIds', JSON.stringify(imageUpdate.keepImageIds))
+    imageUpdate.files.forEach((file) => form.append('images', file))
+    const result = await fetch(url, { method: 'PUT', body: form, credentials: 'include' })
+    const payload = await result.json().catch(() => ({})) as { rating?: RatingEntry; error?: string }
+    if (!result.ok || !payload.rating) throw new ApiError(payload.error ?? '图片上传失败，请重试', result.status)
+    response = { rating: payload.rating }
+  } else {
+    response = await requestJson<{ rating: RatingEntry }>(url, {
       method: 'PUT',
       body: JSON.stringify({ restaurant, rating }),
-    },
-  )
+    })
+  }
   return response.rating
 }
 

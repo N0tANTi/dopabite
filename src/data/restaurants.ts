@@ -1,5 +1,6 @@
 export type RatingEntry = {
   id?: string
+  images?: { id: string; url: string }[]
   taste: number
   value: number
   returnIntent: number

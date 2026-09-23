@@ -45,6 +45,19 @@ export function createProductTables() {
     CREATE INDEX IF NOT EXISTS ratings_poi_status_updated_idx
       ON ratings(amap_poi_id, status, updated_at DESC);
 
+    CREATE TABLE IF NOT EXISTS rating_images (
+      id TEXT PRIMARY KEY,
+      rating_id TEXT NOT NULL,
+      mime_type TEXT NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
+      image_data BLOB NOT NULL,
+      position INTEGER NOT NULL,
+      created_at TEXT NOT NULL,
+      FOREIGN KEY (rating_id) REFERENCES ratings(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS rating_images_rating_position_idx
+      ON rating_images(rating_id, position);
+
     CREATE TABLE IF NOT EXISTS saved_locations (
       id TEXT NOT NULL,
       user_id TEXT NOT NULL,

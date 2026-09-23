@@ -144,6 +144,15 @@ export function RestaurantDrawer({
                         <span>再吃 {rating.returnIntent}</span>
                       </div>
                       <p>{rating.note || '这次只打了分，没有留评语。'}</p>
+                      {Boolean(rating.images?.length) && (
+                        <div className="rating-entry-images" aria-label="评价图片">
+                          {rating.images?.map((image, index) => (
+                            <a key={image.id} href={image.url} target="_blank" rel="noreferrer" aria-label={`查看第 ${index + 1} 张评价图片`}>
+                              <img src={image.url} alt={`${rating.authorLabel || '食客'}的评价图片 ${index + 1}`} loading="lazy" />
+                            </a>
+                          ))}
+                        </div>
+                      )}
                       {rating.isMine && (
                         <div className="rating-entry-actions">
                           {pendingDeleteId === (rating.id ?? rating.createdAt) ? (

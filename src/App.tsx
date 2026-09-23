@@ -581,7 +581,13 @@ function App() {
     })
   }, [category, center, globalSearchState, query, rankingScope, ratedScope, ratings, sortMode, sourceRestaurants, viewMode])
 
-  const saveRating = async (restaurant: Restaurant, rating: RatingEntry, nickname: string) => {
+  const saveRating = async (
+    restaurant: Restaurant,
+    rating: RatingEntry,
+    nickname: string,
+    imageUpdate: { files: File[]; keepImageIds: string[] } | undefined,
+  ): Promise<boolean> => {
+    const requiresCloud = Boolean(imageUpdate)
     const localRating: RatingEntry = {
       ...rating,
       id: rating.id ?? `local-${crypto.randomUUID()}`,
@@ -589,13 +595,12 @@ function App() {
       isMine: true,
       source: 'local',
     }
-    setRatedRestaurants((current) => mergeRatedRestaurants(current, [restaurant]))
-    setLocalRatings((current) => ({
-      ...current,
-      [restaurant.id]: [localRating],
-    }))
-    setToast(`已保存对「${restaurant.name}」的评分，正在同步…`)
-    if (!reduceMotion) {
+    if (!requiresCloud) {
+      setRatedRestaurants((current) => mergeRatedRestaurants(current, [restaurant]))
+      setLocalRatings((current) => ({ ...current, [restaurant.id]: [localRating] }))
+      setToast(`已保存对「${restaurant.name}」的评分，正在同步…`)
+    }
+    if (!reduceMotion && !requiresCloud) {
       void confetti({
         particleCount: 110,
         spread: 78,
@@ -613,16 +618,19 @@ function App() {
       }
       const profile = await updateProfile(nickname)
       setProfileName(profile.name)
-      const savedRating = await saveMyRating(restaurant, localRating)
+      const savedRating = await saveMyRating(restaurant, localRating, imageUpdate)
+      setRatedRestaurants((current) => mergeRatedRestaurants(current, [restaurant]))
       setLocalRatings((current) => ({
         ...current,
         [restaurant.id]: [{ ...savedRating, isMine: true, source: 'cloud' }],
       }))
-      await refreshCommunityRatings([restaurant.id])
-      await refreshRankings()
+      await Promise.allSettled([refreshCommunityRatings([restaurant.id]), refreshRankings()])
       setToast(`已同步对「${restaurant.name}」的评分`)
-    } catch {
+      return true
+    } catch (error) {
+      if (requiresCloud) throw error
       setToast(`评分已保存在本机；云端恢复后可在账号里同步`)
+      return true
     }
   }
 

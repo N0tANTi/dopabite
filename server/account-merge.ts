@@ -51,6 +51,8 @@ export function mergeAnonymousAccount(anonymousUserId: string, newUserId: string
       WHERE id = ?
     `)
     const deleteRating = database.prepare('DELETE FROM ratings WHERE id = ?')
+    const deleteTargetImages = database.prepare('DELETE FROM rating_images WHERE rating_id = ?')
+    const moveImages = database.prepare('UPDATE rating_images SET rating_id = ? WHERE rating_id = ?')
 
     for (const rating of sourceRatings) {
       const target = findTargetRating.get(newUserId, rating.poiId) as
@@ -61,6 +63,8 @@ export function mergeAnonymousAccount(anonymousUserId: string, newUserId: string
         continue
       }
       if (Date.parse(rating.updatedAt) > Date.parse(target.updatedAt)) {
+        deleteTargetImages.run(target.id)
+        moveImages.run(target.id, rating.id)
         updateRating.run(
           rating.taste,
           rating.value,
