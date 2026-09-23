@@ -9,7 +9,7 @@
 ## P1: verify review photos on a physical phone
 
 - Current: up to three images can be attached, previewed, kept, removed, and displayed in public rating cards. Local upload lifecycle tests and production smoke checks passed.
-- Next action: on the live site, choose camera and album photos on iOS/Android, publish a review, reopen and edit it, then remove a photo; check HEIC conversion, orientation, upload error feedback, and mobile scrolling within the dialog.
+- Next action: on the live site, choose camera and album photos on iOS/Android, publish a review, reopen and edit it, then remove a photo; check HEIC conversion, orientation, upload error feedback, and mobile scrolling within the dialog. On desktop, drag an image into the comment textarea and use right-click Paste with a copied image; confirm both land in the preview area while ordinary text paste stays in the textarea.
 - Acceptance: the published images remain visible after refresh and on another device; edits and deletion remove only the intended images; no photo is silently lost when an upload fails.
 
 ## P0: durable database backups

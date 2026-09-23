@@ -20,6 +20,7 @@ Last verified: 2026-09-23
 - Public rating cards show the author's nickname, date, composite score, three score dimensions, note, and ownership marker. Email addresses, authentication methods, internal IDs, and saved locations stay private.
 - A user can edit their own score and note with the existing values prefilled, or delete the rating after an inline confirmation. Other users' ratings remain read-only.
 - A rating can include up to three public photos. The form previews and removes photos, resizes selected images to JPEG without photo metadata, and keeps the form open if an image upload fails. Public rating cards display the photos; edits can retain or remove them, and deleting the rating deletes its photos. Image bytes are stored in a separate SQLite table, so the existing verified database snapshots include them.
+- Review photos can also be dragged into or pasted into the comment textarea, including through the native right-click Paste command. Photos appear in the preview area below the textarea; ordinary text paste remains text.
 - Saved locations are private to the authenticated account. Live/current location history is not stored. `localStorage` remains an offline fallback and migration source.
 - The API uses SQLite WAL at `/srv/dopabite-data/dopabite.sqlite3`; code releases cannot overwrite it.
 
@@ -33,7 +34,7 @@ Last verified: 2026-09-23
 ## Production deployment
 
 - Host: Tencent Cloud anti server, Ubuntu 24.04, Nginx 1.24.
-- Active web and API releases: `/srv/dopabite/releases/20260923084340` and `/srv/dopabite-api/releases/20260923084340` (Git `18dc11c`).
+- Active web release: `/srv/dopabite/releases/20260923091502` (Git `b5a6f8c`). Active API release: `/srv/dopabite-api/releases/20260923084340` (Git `18dc11c`).
 - Active symlink: `/srv/dopabite/current`.
 - Active API release is linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
@@ -47,6 +48,7 @@ Last verified: 2026-09-23
 
 - `npm run lint`: passed.
 - `npm run build`: passed.
+- The drag-and-paste web release `20260923091502` passed clean `npm ci`, lint, and build. HTTPS and its expected JS/CSS returned 200, API health/config passed, Nginx syntax and all three service checks passed, and storage remained at 26% of bytes and 9% of inodes. Browser automation could not connect during this release, so a real drag/paste gesture remains unverified.
 - The image-upload change passed `npm ci`, lint, build, and the isolated API integration test for public image reads, owner-only image references, edit/retain/remove, invalid file rejection, JSON edit preservation, and deletion. The production API was started against a copy of the pre-deploy snapshot before promotion.
 - Web/API release `20260923084340` is live. HTTPS and the expected JS/CSS returned 200; the API health, ratings, rankings, and config endpoints passed; a 100 KB unauthenticated upload reached the API and returned 401 rather than Nginx's former 413. The missing-image endpoint returned 404. Nginx syntax and service checks passed. The pre-deploy snapshot `dopabite-20260923T084304Z.sqlite3` passed SHA-256 and SQLite integrity checks and its off-host copy matched SHA-256 `fe2d205f30563fa0b3c43dc8e94a917cf28872023459be190a29dc094157c9a2`. Post-release storage is 26% of bytes and 9% of inodes. A real phone photo upload on production remains to be verified.
 - The post-migration backup `dopabite-20260923T084726Z.sqlite3` was copied off-host, matched SHA-256 `4da562bc7d9091a3cbb552f8cc352e79201c6f59d2ffdfcad645f63a7289e202`, passed SQLite integrity check, and contains the new `rating_images` table.
