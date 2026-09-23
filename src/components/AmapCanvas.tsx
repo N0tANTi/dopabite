@@ -402,6 +402,13 @@ export function AmapCanvas({
       return
     }
     let cancelled = false
+    let settled = false
+    const timeout = window.setTimeout(() => {
+      if (cancelled || settled) return
+      settled = true
+      setMessage('全部地点搜索超时，请重试')
+      onGlobalSearchResult(null)
+    }, 15_000)
     const service = new amap.PlaceSearch({
       pageSize: 50,
       pageIndex: 1,
@@ -411,7 +418,9 @@ export function AmapCanvas({
       extensions: 'all',
     })
     service.search(globalSearchRequest.keyword, (status, result) => {
-      if (cancelled) return
+      if (cancelled || settled) return
+      settled = true
+      window.clearTimeout(timeout)
       if (status === 'no_data') {
         setMessage('全部地点也没有找到餐饮店')
         onGlobalSearchResult([])
@@ -443,7 +452,10 @@ export function AmapCanvas({
       setMessage(unique.length ? `全部地点找到 ${unique.length} 家餐饮店` : '全部地点也没有找到餐饮店')
       onGlobalSearchResult(unique)
     })
-    return () => { cancelled = true }
+    return () => {
+      cancelled = true
+      window.clearTimeout(timeout)
+    }
   }, [globalSearchRequest, onGlobalSearchResult])
 
   useEffect(() => {

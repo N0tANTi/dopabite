@@ -1625,6 +1625,24 @@ button {
   line-height: 1.55;
 }
 
+.empty-state-actions {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.empty-search-button {
+  background: var(--yellow);
+  color: var(--ink);
+}
+
+.empty-search-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
 .drawer-overlay,
 .dialog-overlay {
   position: fixed;

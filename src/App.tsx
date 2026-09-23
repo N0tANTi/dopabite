@@ -662,6 +662,14 @@ function App() {
     setResultLimitDraft(String(nextLimit))
   }
 
+  const searchAllLocations = () => {
+    const keyword = query.trim()
+    if (!keyword) return
+    setCategory('全部')
+    setGlobalSearchState('loading')
+    setGlobalSearchRequest({ token: ++globalSearchTokenRef.current, keyword })
+  }
+
   const savedCurrentLocation = useMemo(() => {
     if (!locationInfo.point) return undefined
     return savedLocations.find(
@@ -1020,28 +1028,6 @@ function App() {
             )}
           </label>
 
-          {viewMode === 'nearby' && query.trim() && visibleRestaurants.length === 0 && (
-            <div className="global-search-action" role="status">
-              <span>
-                {globalSearchState === 'loading' ? '正在搜索全部地点…'
-                  : globalSearchState === 'results' ? '全部地点也没有找到餐饮店，试试补充城市或店名。'
-                    : globalSearchState === 'error' ? '搜索暂时失败，可以重试。'
-                      : '附近没有匹配的店，去全部地点找找。'}
-              </span>
-              {globalSearchState !== 'loading' && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCategory('全部')
-                    setGlobalSearchState('loading')
-                    setGlobalSearchRequest({ token: ++globalSearchTokenRef.current, keyword: query.trim() })
-                  }}
-                >
-                  {globalSearchState === 'idle' ? '搜索全部地点' : '重新搜索'}
-                </button>
-              )}
-            </div>
-          )}
           {viewMode === 'nearby' && globalSearchState === 'results' && visibleRestaurants.length > 0 && (
             <div className="global-search-action" role="status">
               <span>正在显示全部地点的餐饮店</span>
@@ -1167,7 +1153,10 @@ function App() {
                           ? '附近暂时没有上榜店铺'
                           : '这个筛选没有上榜店铺'
                     : viewMode !== 'rated'
-                      ? '这个条件没找到店'
+                      ? globalSearchState === 'loading' ? '正在搜索全部地点'
+                        : globalSearchState === 'error' ? '搜索暂时失败'
+                          : globalSearchState === 'results' ? '全部地点也没找到店'
+                            : '这个条件没找到店'
                       : !allRatedRestaurants.length
                       ? '你还没打过分'
                       : ratedScope === 'nearby' && !nearbyRatedCount
@@ -1184,42 +1173,60 @@ function App() {
                           ? '切换到“全部”，看看其他地点的社区高分店。'
                           : '换个关键词或清除品类筛选试试。'
                     : viewMode !== 'rated'
-                      ? '换个关键词或清除品类筛选试试。'
+                      ? query.trim()
+                        ? globalSearchState === 'loading' ? '正在从高德查找更多餐饮店…'
+                          : globalSearchState === 'error' ? '可以重试，或补充城市、店名后再搜。'
+                            : globalSearchState === 'results' ? '试试补充城市或店名。'
+                              : '附近没有匹配的店，可以搜索全部地点。'
+                        : '换个关键词或清除品类筛选试试。'
                       : !allRatedRestaurants.length
                       ? '先去发现附近的店，吃完再回来写真话。'
                       : ratedScope === 'nearby' && !nearbyRatedCount
                         ? '你的历史评分都还在，切回“全部”就能看到。'
                         : '换个关键词或清除品类筛选试试。'}
                 </p>
-                <button
-                  type="button"
-                  className="secondary-button"
-                  onClick={() => {
-                    setQuery('')
-                    resetGlobalSearch()
-                    setCategory('全部')
-                    if (viewMode === 'ranking' && rankingError && !rankedRestaurants.length) {
-                      setRankingLoading(true)
-                      void refreshRankings()
-                    } else if (viewMode === 'ranking' && rankedRestaurants.length) {
-                      setRankingScope('all')
-                    } else if (viewMode === 'rated' && allRatedRestaurants.length) {
-                      setRatedScope('all')
-                    } else {
-                      setViewMode('nearby')
-                    }
-                  }}
-                >
-                  {viewMode === 'ranking'
-                    ? rankingError && !rankedRestaurants.length
-                      ? '重新加载'
-                      : rankedRestaurants.length
-                        ? '查看全部榜单'
-                        : '去发现附近'
-                    : viewMode === 'rated' && allRatedRestaurants.length
-                      ? '显示全部评价'
-                      : '重置筛选'}
-                </button>
+                <div className="empty-state-actions">
+                  {viewMode === 'nearby' && Boolean(query.trim()) && (
+                    <button
+                      type="button"
+                      className="primary-button empty-search-button"
+                      onClick={searchAllLocations}
+                      disabled={globalSearchState === 'loading'}
+                    >
+                      {globalSearchState === 'loading' ? '搜索中…'
+                        : globalSearchState === 'idle' ? '搜索全部地点' : '重新搜索'}
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="secondary-button"
+                    onClick={() => {
+                      setQuery('')
+                      resetGlobalSearch()
+                      setCategory('全部')
+                      if (viewMode === 'ranking' && rankingError && !rankedRestaurants.length) {
+                        setRankingLoading(true)
+                        void refreshRankings()
+                      } else if (viewMode === 'ranking' && rankedRestaurants.length) {
+                        setRankingScope('all')
+                      } else if (viewMode === 'rated' && allRatedRestaurants.length) {
+                        setRatedScope('all')
+                      } else {
+                        setViewMode('nearby')
+                      }
+                    }}
+                  >
+                    {viewMode === 'ranking'
+                      ? rankingError && !rankedRestaurants.length
+                        ? '重新加载'
+                        : rankedRestaurants.length
+                          ? '查看全部榜单'
+                          : '去发现附近'
+                      : viewMode === 'rated' && allRatedRestaurants.length
+                        ? '显示全部评价'
+                        : '重置筛选'}
+                  </button>
+                </div>
               </div>
             )}
           </div>
