@@ -1,6 +1,6 @@
 # DopaBite current state
 
-Last verified: 2026-09-22
+Last verified: 2026-09-23
 
 ## Product
 
@@ -36,10 +36,10 @@ Last verified: 2026-09-22
 - Active API release: `/srv/dopabite-api/releases/20260922171200`, linked from `/srv/dopabite-api/current`.
 - `dopabite-api.service` is enabled and binds only to `127.0.0.1:8787`; Nginx proxies `/api/` on the public HTTPS origin.
 - `dopabite-backup.timer` creates and integrity-checks daily SQLite snapshots under `/srv/dopabite-data/backups/`, retaining seven.
-- The first verified production snapshot was also copied off-host to `D:\anti\backups\dopabite`. Automated COS replication is not configured yet.
+- Verified deployment snapshots are also copied off-host to `D:\anti\backups\dopabite`; the latest off-host copy is `dopabite-20260922T091556Z.sqlite3`. Automated COS replication is not configured yet.
 - Nginx site: `/etc/nginx/sites-available/food-archein-site`.
 - TLS: Let's Encrypt certificate for `food.archein.site`, valid through 2026-12-20 with Certbot automatic renewal enabled.
-- The host has one 40 GB ext4 root filesystem and no separate data disk. At deployment it used 24% of bytes and 7% of inodes. `/srv` is the established release location for this host.
+- The host has one 40 GB ext4 root filesystem and no separate data disk. On 2026-09-23 it used 26% of bytes and 9% of inodes. `/srv` is the established release location for this host.
 
 ## Validation
 
@@ -56,7 +56,7 @@ Last verified: 2026-09-22
 - The first production SQLite snapshot passed its checksum and `PRAGMA integrity_check`; the post-deploy system disk remains at 25% byte use and 8% inode use.
 - Back-to-top visibility and return behavior were verified locally; its production presence was verified after scrolling.
 - Chain-discovery release `20260922113221` previously passed HTTPS, API health, asset-identity, and storage checks before the account release superseded it.
-- Web release `20260922130417` remains active; its matching API release was superseded by the SES adapter release below. HTTP redirects to HTTPS, homepage and API health return 200, `/api/config` correctly reports email delivery disabled, the page serves `index-tkIkchOh.js`, cross-origin writes return 403, and Nginx validation passes.
+- Web/API release `20260922130417` previously passed HTTPS, health, runtime-config, asset, cross-origin, and Nginx checks before later releases superseded it.
 - The pre-deploy snapshot `dopabite-20260922T050158Z.sqlite3` passed `PRAGMA integrity_check`; its off-host copy has matching SHA-256 `1bf447b1a41c609b3873b708d4f53f5ad9ea95734156af27f2d4b2268e19dab8`.
 - Tencent SES API template delivery is implemented and deployed in API release `20260922143538`. The least-privilege CAM credential, verified sender `no-reply@notify.archein.site`, and template ID `61514` are stored only in the root-owned production environment file. Email-code login is now advertised as enabled by the production API. The production SSH alias is explicitly `tengxunyun-anti` to prevent confusion with the unrelated `aliyun-anti` host.
 - SES request construction, feature detection, lint, production build, and dependency audit passed locally. Production API health remains 200, `/api/config` returns `{"emailOtpEnabled":true}`, and a production send request to an operator-provided QQ inbox returned `{"success":true}` after correcting the optional OTP-generator configuration. The current service log is clean apart from Node's existing SQLite experimental warning, and post-deploy storage is 26% of bytes and 9% of inodes. Inbox receipt and second-device recovery still require manual verification.
@@ -64,6 +64,7 @@ Last verified: 2026-09-22
 - Web/API release `20260922155323` is live. HTTPS, API health, served asset identity (`index-C_ezll21.js` and `index-BeMCkW43.css`), email-login feature detection, Nginx configuration, certificate SAN, live database integrity, and the additive restaurant metadata columns all passed. All 8 existing live ratings have matching restaurant snapshots. The pre-migration snapshot `dopabite-20260922T075212Z.sqlite3` was verified by the backup service and copied off-host with matching SHA-256 `d7909f5df7cbaef0245b852aa0abdbe446e28859b5e42b9df7aadfd77e84ad6`. Post-deploy storage is 26% of bytes and 10% of inodes.
 - Web/API release `20260922161714` adds historical POI detail enrichment plus own-rating edit/delete controls. Local browser QA verified prefilled editing and the inline delete confirmation. Isolated API tests verified missing-image enrichment and the full create/update/delete lifecycle while preserving the rating ID and original creation time. Production HTTPS, asset identity (`index-BFQVX5wk.js` and `index-BnfDpNuo.css`), API health/config, authentication on snapshot writes, Nginx, service logs, and database integrity passed. Snapshot `dopabite-20260922T081704Z.sqlite3` was copied off-host with matching SHA-256 `1b44b118110e5bdd767ac2e22781e80e54c0839be57e8b5feeddeb42816cb56f`; storage is 27% of bytes and 11% of inodes.
 - Web/API release `20260922171200` turns “多巴胺榜” into a real community ranking with nearby/all scope and a public rated-restaurant endpoint. Local API tests verified score order and removal after the last public rating is deleted; desktop browser QA verified the custom sort menu, scope switching, ranking order, map/list counts, and an empty error console. Production HTTPS, asset identity (`index-q2yKtdik.js` and `index-Daop-U0j.css`), API health/config, the 24-store ranking response, write authorization boundaries, certificate SAN, Nginx, service logs, and release retention passed. Snapshot `dopabite-20260922T091556Z.sqlite3` was copied off-host with matching SHA-256 `bd33a93aae110544d15e8053b814809208ba709bf7b71082d940fbc2ad8b7508`; storage remains 27% of bytes and 11% of inodes.
+- The 2026-09-23 read-only production checkpoint confirmed release `20260922171200` on both active symlinks, HTTP-to-HTTPS redirect, HTTPS 200, healthy API/config with email OTP enabled, the expected JS/CSS assets, and 43 restaurants from `/api/rankings`. Nginx, `dopabite-api.service`, and `dopabite-backup.timer` are active; Nginx syntax passes. The newest server snapshot, `dopabite-20260922T193607Z.sqlite3`, passes its SHA-256 check (`a925abf6b0dc3d12c7ce600e8b12054171de63a5bc0780220f76264a753f13c2`). Storage is 26% of bytes and 9% of inodes.
 
 ## Known limitations and blockers
 
