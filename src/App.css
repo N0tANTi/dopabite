@@ -2317,6 +2317,12 @@ button {
   box-shadow: 4px 4px 0 var(--yellow);
 }
 
+.note-field textarea.is-image-drop-target {
+  border-color: var(--pink);
+  background: var(--mint);
+  box-shadow: 4px 4px 0 var(--yellow);
+}
+
 .note-field > small {
   justify-self: end;
   color: var(--muted);

@@ -96,8 +96,34 @@ export function RatingDialog({ open, restaurant, nickname, initialRating, onOpen
   const selectedImagesRef = useRef<SelectedImage[]>([])
   const [imageError, setImageError] = useState('')
   const [preparingImages, setPreparingImages] = useState(false)
+  const [draggingImage, setDraggingImage] = useState(false)
+  const imageProcessingRef = useRef(false)
   const [submitting, setSubmitting] = useState(false)
   const fileInput = useRef<HTMLInputElement>(null)
+
+  async function addImages(files: File[]) {
+    if (!files.length) return
+    if (imageProcessingRef.current || submitting) {
+      setImageError('正在处理图片，请稍后再试')
+      return
+    }
+    if (files.length + keptImages.length + selectedImages.length > 3) {
+      setImageError('每条评价最多上传 3 张图片')
+      return
+    }
+    imageProcessingRef.current = true
+    setPreparingImages(true)
+    setImageError('')
+    try {
+      const prepared = await Promise.all(files.map(prepareImage))
+      setSelectedImages((current) => [...current, ...prepared.map((file) => ({ file, url: URL.createObjectURL(file) }))])
+    } catch (error) {
+      setImageError(error instanceof Error ? error.message : '图片处理失败')
+    } finally {
+      imageProcessingRef.current = false
+      setPreparingImages(false)
+    }
+  }
 
   useEffect(() => {
     selectedImagesRef.current = selectedImages
@@ -203,7 +229,41 @@ export function RatingDialog({ open, restaurant, nickname, initialRating, onOpen
               <textarea
                 value={note}
                 onChange={(event) => setNote(event.target.value)}
+                onPaste={(event) => {
+                  const itemImages = Array.from(event.clipboardData.items)
+                    .filter((item) => item.kind === 'file' && item.type.startsWith('image/'))
+                    .map((item) => item.getAsFile())
+                    .filter((file): file is File => file !== null)
+                  const images = itemImages.length
+                    ? itemImages
+                    : Array.from(event.clipboardData.files).filter((file) => file.type.startsWith('image/'))
+                  if (!images.length) return
+                  event.preventDefault()
+                  void addImages(images)
+                }}
+                onDragEnter={(event) => {
+                  if (Array.from(event.dataTransfer.types).includes('Files')) {
+                    event.preventDefault()
+                    setDraggingImage(true)
+                  }
+                }}
+                onDragOver={(event) => {
+                  if (Array.from(event.dataTransfer.types).includes('Files')) {
+                    event.preventDefault()
+                    event.dataTransfer.dropEffect = 'copy'
+                    setDraggingImage(true)
+                  }
+                }}
+                onDragLeave={() => setDraggingImage(false)}
+                onDrop={(event) => {
+                  setDraggingImage(false)
+                  if (!event.dataTransfer.files.length) return
+                  event.preventDefault()
+                  void addImages(Array.from(event.dataTransfer.files))
+                }}
                 placeholder="什么最惊喜？什么要避雷？"
+                className={draggingImage ? 'is-image-drop-target' : undefined}
+                aria-describedby="rating-image-drop-hint"
                 maxLength={160}
                 rows={3}
               />
@@ -233,20 +293,7 @@ export function RatingDialog({ open, restaurant, nickname, initialRating, onOpen
                 onChange={async (event) => {
                   const files = Array.from(event.target.files ?? [])
                   event.target.value = ''
-                  if (files.length + keptImages.length + selectedImages.length > 3) {
-                    setImageError('每条评价最多上传 3 张图片')
-                    return
-                  }
-                  setPreparingImages(true)
-                  setImageError('')
-                  try {
-                    const prepared = await Promise.all(files.map(prepareImage))
-                    setSelectedImages((current) => [...current, ...prepared.map((file) => ({ file, url: URL.createObjectURL(file) }))])
-                  } catch (error) {
-                    setImageError(error instanceof Error ? error.message : '图片处理失败')
-                  } finally {
-                    setPreparingImages(false)
-                  }
+                  await addImages(files)
                 }}
               />
               {(keptImages.length > 0 || selectedImages.length > 0) && (
@@ -268,7 +315,7 @@ export function RatingDialog({ open, restaurant, nickname, initialRating, onOpen
                   ))}
                 </div>
               )}
-              <small>图片会公开展示；上传时会压缩并去除位置等照片元数据。</small>
+              <small id="rating-image-drop-hint">也可把图片拖进上方评论框，或在评论框右键粘贴。图片会公开展示，上传时会压缩并去除照片元数据。</small>
               {imageError && <p className="rating-image-error" role="alert">{imageError}</p>}
             </div>
 
